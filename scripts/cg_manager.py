@@ -8,6 +8,7 @@ from datetime import datetime
 
 MANIFEST_PATH = ".context-guard/active_session/manifest.json"
 ARCHIVE_PATH = ".context-guard/archive/"
+LOCK_FILE = ".context-guard/active_session/.lock"
 
 
 def load_manifest():
@@ -41,7 +42,18 @@ def cmd_check_lock(args):
         print(f"ACTIVE|{elapsed}|{ttl}|{m['lock'].get('acquired_by')}")
 
 
+def _try_create_lockfile():
+    """Atomic test-and-set at the OS level. Returns True if acquired."""
+    try:
+        fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+        return True
+    except FileExistsError:
+        return False
+
+
 def cmd_acquire(args):
+    os.makedirs(os.path.dirname(MANIFEST_PATH), exist_ok=True)
     m = load_manifest()
     if not m:
         m = {
@@ -50,6 +62,29 @@ def cmd_acquire(args):
             "reference_docs": [],
             "files_in_scope": [],
         }
+
+    if not _try_create_lockfile():
+        # Someone else won the race between check-lock and this acquire.
+        # Only override if their lock is stale per TTL.
+        existing = m.get("lock", {})
+        acquired_at = existing.get("acquired_at")
+        ttl = existing.get("ttl_seconds", args.ttl)
+        stale = False
+        if acquired_at:
+            elapsed = (
+                datetime.now() - datetime.fromisoformat(acquired_at)
+            ).total_seconds()
+            stale = elapsed > ttl
+
+        if not stale:
+            print(f"FAIL|LOCK_HELD|{existing.get('acquired_by')}")
+            return
+
+        os.remove(LOCK_FILE)
+        if not _try_create_lockfile():
+            # Lost a second race against another stale-takeover attempt.
+            print("FAIL|LOCK_CONTENDED")
+            return
 
     m["lock"] = {
         "held": True,
@@ -68,7 +103,9 @@ def cmd_release(args):
         m["lock"]["acquired_at"] = None
         m["lock"]["acquired_by"] = None
         save_manifest(m)
-        print("SUCCESS|LOCK_RELEASED")
+    if os.path.exists(LOCK_FILE):
+        os.remove(LOCK_FILE)
+    print("SUCCESS|LOCK_RELEASED")
 
 
 if __name__ == "__main__":
