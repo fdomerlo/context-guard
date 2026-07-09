@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 SKILL_SRC="$REPO_DIR/SKILL.md"
-MANAGER_SRC="$SCRIPT_DIR/cg_manager.py"
+MANAGER_SRC="$SCRIPT_DIR/guard.py"
 
 # Standard Agent Skills Spec global path
 SKILLS_DIR="$HOME/.agents/skills"
@@ -27,14 +27,14 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 info() { echo -e "  ${CYAN}→${NC} $1"; }
 
 [ -f "$SKILL_SRC" ] || { echo "Error: SKILL.md not found in $REPO_DIR"; exit 1; }
-[ -f "$MANAGER_SRC" ] || { echo "Error: cg_manager.py not found in $SCRIPT_DIR"; exit 1; }
+[ -f "$MANAGER_SRC" ] || { echo "Error: guard.py not found in $SCRIPT_DIR"; exit 1; }
 
 install_core() {
     info "Copiando archivos base..."
     mkdir -p "$BIN_DEST"
     cp "$SKILL_SRC" "$SKILL_DEST/"
     cp "$MANAGER_SRC" "$BIN_DEST/"
-    chmod +x "$BIN_DEST/cg_manager.py"
+    chmod +x "$BIN_DEST/guard.py"
     ok "Core y Middleware instalados en $SKILL_DEST"
 }
 
@@ -57,7 +57,7 @@ install_antigravity() {
     echo "MANDATORY BOOTSTRAP — execute before responding to anything:" >> "$gemini"
     echo "1. Call read_file on \`$SKILL_DEST/SKILL.md\`." >> "$gemini"
     echo "2. Follow every instruction in that file as your absolute state contract." >> "$gemini"
-    echo "3. Check for an active context at \`.context-guard/active_session/manifest.json\`" >> "$gemini"
+    echo "3. Check for an active context at \`.context-guard/sessions/{context}/manifest.json\`" >> "$gemini"
     echo "   and act accordingly (Cold Boot, Resume, or Recovery)." >> "$gemini"
     echo "$MARKER_END" >> "$gemini"
     
@@ -88,7 +88,7 @@ install_opencode() {
         echo "MANDATORY BOOTSTRAP — execute before responding to anything:"
         echo "1. Call read_file on \`$SKILL_DEST/SKILL.md\`."
         echo "2. Follow every instruction in that file as your absolute state contract."
-        echo "3. Check for an active context at \`.context-guard/active_session/manifest.json\`"
+        echo "3. Check for an active context at \`.context-guard/sessions/{context}/manifest.json\`"
         echo "   and act accordingly (Cold Boot, Resume, or Recovery)."
         echo "$MARKER_END"
     } >> "$agents_md"
@@ -99,14 +99,26 @@ install_opencode() {
 # ---------------------------------------------------------------------------
 
 uninstall() {
+    local target="$1"
     info "Desinstalando Context Guard..."
     rm -rf "$SKILL_DEST"
     ok "Archivos base eliminados."
-    
+
     local gemini="$HOME/.gemini/GEMINI.md"
-    if [ -f "$gemini" ] && grep -q "$MARKER_BEGIN" "$gemini"; then
-        awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$gemini" > "${gemini}.tmp" && mv "${gemini}.tmp" "$gemini"
-        ok "Prompt removido de GEMINI.md"
+    local agents_md="$HOME/.config/opencode/AGENTS.md"
+
+    if [ "$target" == "antigravity" ] || [ -z "$target" ]; then
+        if [ -f "$gemini" ] && grep -q "$MARKER_BEGIN" "$gemini"; then
+            awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$gemini" > "${gemini}.tmp" && mv "${gemini}.tmp" "$gemini"
+            ok "Prompt removido de GEMINI.md"
+        fi
+    fi
+
+    if [ "$target" == "opencode" ] || [ -z "$target" ]; then
+        if [ -f "$agents_md" ] && grep -q "$MARKER_BEGIN" "$agents_md"; then
+            awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$agents_md" > "${agents_md}.tmp" && mv "${agents_md}.tmp" "$agents_md"
+            ok "Prompt removido de AGENTS.md"
+        fi
     fi
 }
 
@@ -114,13 +126,19 @@ echo -e "\n${CYAN}${BOLD}Context Guard — Installer${NC}"
 echo -e "  Skills path: $SKILL_DEST\n"
 
 TARGET=""
+UNINSTALL=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --target)    TARGET="$2"; shift 2 ;;
-    --uninstall) uninstall; exit 0 ;;
+    --uninstall) UNINSTALL=true; shift 1 ;;
     *) echo "Usage: install.sh --target antigravity | --target opencode | --uninstall"; exit 1 ;;
   esac
 done
+
+if [ "$UNINSTALL" == "true" ]; then
+    uninstall "$TARGET"
+    exit 0
+fi
 
 if [ "$TARGET" == "antigravity" ]; then
     install_antigravity

@@ -16,44 +16,59 @@ You operate strictly as an automated, stateless State Guardian and Data-Plane Co
 ## 2. WORKSPACE CONFIGURATION
 ```text
 .context-guard/
-  ├── active_session/
-  │   ├── manifest.json
-  │   ├── objective.md        
-  │   ├── snapshot.md         
-  │   └── blockers_todo.md    
+  ├── sessions/
+  │   └── {context_name}/
+  │       ├── manifest.json
+  │       ├── objective.md
+  │       ├── snapshot.md
+  │       └── blockers_todo.md
   └── archive/
 
 ```
+
+All paths are **relative to the project root** (`cwd`). Each context gets its own namespace under `sessions/`, allowing multiple isolated contexts per machine.
 
 ## 3. STATE RECONCILIATION & EXECUTION (BOOTSTRAP)
 
 On initialization, execute these steps sequentially:
 
-### STEP 1 - COLD BOOT DETECTION
+### STEP 1 — COLD BOOT DETECTION
 
-If `.context-guard/active_session/manifest.json` is missing:
+If `.context-guard/sessions/{context}/manifest.json` is missing:
 
 1. Auto-discover the project stack (`ls package.json pyproject.toml go.mod Cargo.toml...`)
 2. Acquire the initial lock via terminal using the global middleware:
-`python3 ~/.gemini/skills/context-guard/bin/cg_manager.py acquire --context {target-objective}`
-3. Generate `snapshot.md`, `objective.md`, and `blockers_todo.md` based on discovery.
-4. Output a welcome message in SPANISH and HALT.
+   `python3 ~/.agents/skills/context-guard/bin/guard.py claim --context {target-objective} --ttl 300`
+3. Generate `snapshot.md`, `objective.md`, and `blockers_todo.md` inside `.context-guard/sessions/{context}/`.
+4. Validate the generated artifacts:
+   `python3 ~/.agents/skills/context-guard/bin/guard.py validate --context {context}`
+   If exit code ≠ 0, fix the flagged file(s) before continuing — do not proceed on a FAIL.
+5. Release the session lock immediately after cold boot completes:
+   `python3 ~/.agents/skills/context-guard/bin/guard.py release --context {context}`
+6. Output a welcome message in SPANISH and HALT.
 
-### STEP 2 - LOCK CHECK & REHYDRATION
+### STEP 2 — REHYDRATION
 
-If the workspace exists, check lock status:
-`python3 ~/.gemini/skills/context-guard/bin/cg_manager.py check-lock`
+If the workspace exists (manifest.json is present):
 
-* If `FREE` or `STALE`: Acquire the lock (`python3 ~/.gemini/skills/context-guard/bin/cg_manager.py acquire --context {name}`) and proceed.
-* If `ACTIVE`: Stop and report the conflict in Spanish to the developer.
+1. Read `snapshot.md`, `objective.md`, and `blockers_todo.md` to rehydrate context.
+2. No session lock is needed for read-only rehydration.
 
-### STEP 3 - AUTONOMOUS DISCOVERY & EXECUTION
+### STEP 3 — AUTONOMOUS DISCOVERY & EXECUTION
+
+Work on tasks from `blockers_todo.md` using **per-task locking**:
 
 1. Run `git diff HEAD --stat` to discover deployed physical changes.
 2. Update `snapshot.md` if necessary.
-3. Read `blockers_todo.md` and execute the first unchecked item.
-4. When yielding control back to the user (even if blocked), release the lock:
-`python3 ~/.gemini/skills/context-guard/bin/cg_manager.py release`
+3. For each unchecked item in `blockers_todo.md`:
+   a. Claim the task:
+      `python3 ~/.agents/skills/context-guard/bin/guard.py claim-task --context {context} --task-id {task-id}`
+      * Exit code 0: proceed with the task.
+      * Exit code 1 (`FAIL|TASK_CLAIMED`): another agent owns this task — skip to the next unchecked item.
+   b. Execute the task.
+   c. Release the task when done:
+      `python3 ~/.agents/skills/context-guard/bin/guard.py release-task --context {context} --task-id {task-id}`
+4. When yielding control back to the user (even if blocked), there is no session lock to release — task locks are already released per-item above.
 
 ## 4. DUAL-LANGUAGE BOUNDARY
 
@@ -62,10 +77,19 @@ If the workspace exists, check lock status:
 
 ## 5. TRANSACTION CLOSURE & ARCHIVAL TRIGGER
 
-When `blockers_todo.md` contains zero unchecked items (`- [ ]`), execute this sequence strictly in order:
+When `blockers_todo.md` contains zero unchecked items, verify with the CLI:
+`python3 ~/.agents/skills/context-guard/bin/guard.py check-completion --context {context}`
 
-1. **Copy** (not move) all contents of `.context-guard/active_session/` to `.context-guard/archive/{YYYYMMDD_HHMMSS}_{context_name}/`.
-2. **Verify** the archive directory is non-empty.
-3. Only after verification passes: **delete** the contents of `active_session/`.
-4. Release the lock: `python3 ~/.gemini/skills/context-guard/bin/cg_manager.py release`
-5. Output a clean technical summary in Spanish.
+If `all_complete=true`:
+
+1. Validate artifacts before archiving:
+   `python3 ~/.agents/skills/context-guard/bin/guard.py validate --context {context}`
+   If exit code ≠ 0, fix the flagged file(s) — do not proceed on a FAIL.
+2. Acquire a brief session lock to serialize the archival operation:
+   `python3 ~/.agents/skills/context-guard/bin/guard.py claim --context {context} --ttl 60`
+3. **Copy** (not move) all contents of `.context-guard/sessions/{context}/` to `.context-guard/archive/{YYYYMMDD_HHMMSS}_{context}/`.
+4. **Verify** the archive directory is non-empty.
+5. Only after verification passes: **delete** the contents of `sessions/{context}/`.
+6. Release the lock:
+   `python3 ~/.agents/skills/context-guard/bin/guard.py release --context {context}`
+7. Output a clean technical summary in Spanish.
