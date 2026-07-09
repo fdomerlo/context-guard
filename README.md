@@ -154,26 +154,23 @@ El middleware es determinista y no depende del modelo. **El protocolo del `SKILL
 
 ### ✅ Implementado (mitigaciones que reducen la superficie de error del modelo)
 
-1. **`claim` atómico.** `guard.py claim --context X` colapsa check+acquire+stale-takeover en una sola llamada. El modelo no necesita secuenciar `check-lock` → `acquire` manualmente.
+1. **`claim` atómico:** `guard.py claim --context X` colapsa check+acquire+stale-takeover en una sola llamada. El modelo no necesita secuenciar `check-lock` → `acquire` manualmente.
+2. **`check-completion` determinista:** `guard.py check-completion --context X` parsea `tasks.md` y/o `blockers_todo.md` devolviendo métricas estructuradas. El modelo ya no necesita contar checkboxes a mano, evitando alucinaciones numéricas.
+3. **`validate` preventivo:** `guard.py validate --context X` verifica la existencia de artefactos obligatorios y audita su tamaño. Los errores se atrapan en tiempo de ejecución, no en el siguiente reinicio.
+4. **Cap de longitud en artefactos:** Se rechaza automáticamente cualquier archivo que exceda el límite de caracteres, forzando al modelo a sintetizar y previniendo la inflación de contexto en rehidrataciones futuras.
+5. **Exit codes semánticos (machine-readable):** Todos los comandos devuelven códigos de salida diferenciados (e.g., `EXIT_LOCK_HELD`, `EXIT_VALIDATION`). El orquestador puede bifurcar el flujo de control sin depender de que el LLM parsee strings de texto.
+6. **`archive` atómico:** `guard.py archive --context X` orquesta la validación final, el copiado y la limpieza de sesión en un único paso transaccional. Elimina la necesidad de que el modelo encadene operaciones complejas de I/O sobre el file system.
+7. **Detección de locks huérfanos (Stale-detection):** El mutex de escritura (read-modify-write) incluye el PID del proceso. Si el agente es interrumpido bruscamente y el proceso muere, el lock se recupera automáticamente sin tener que esperar un timeout ciego.
+8. **Validación de ownership en tareas:** `release-task --agent-id` asegura que un agente no libere accidentalmente una tarea reclamada por otro agente en sesiones concurrentes.
+9. **Desacople en Sub-skills:** Procesos complejos como el desglose funcional (`tasks`), auditoría estática (`review`) y validación dinámica (`verify`) se aislaron en skills independientes. Esto achica el prompt principal del enjambre y carga las instrucciones específicas solo en la fase del pipeline que las requiere.
 
-2. **`check-completion` determinista.** `guard.py check-completion --context X` parsea `tasks.md` y/o `blockers_todo.md` y devuelve datos estructurados por fuente. El modelo no cuenta checkboxes a mano.
+### ⚠️ Pendiente (Hoja de ruta)
 
-3. **`validate` para artefactos generados.** `guard.py validate --context X` verifica existencia de artefactos obligatorios y tamaño de todos los artefactos presentes. Un archivo faltante se detecta en el momento, no en la próxima sesión.
+* **Perfil Slim para modelos limitados:** El protocolo actual del `SKILL.md` es estable en frontier models, pero puede ser denso para modelos con ventanas de contexto chicas o baja adherencia a instrucciones.
+   - *Mejora propuesta:* Crear un `SKILL-slim.md` (un checklist plano y estricto) e introducir la flag `--profile slim` en el instalador.
+* **Soporte extendido de orquestadores:** Actualmente el instalador provee inyección automática (`--target`) para Antigravity y OpenCode.
+   - *Mejora propuesta:* Integración automática con otros harness populares (ej. RooCode, Cline) modificando sus system prompts dinámicamente.
+* **Telemetría / Auditoría de estado (Event Sourcing):** 
+   - *Mejora propuesta:* Mantener un log de transacciones estructurado (JSONL) con todas las mutaciones realizadas sobre el `manifest.json`, para facilitar el post-mortem debugging si un agente rompe la integridad lógica del contexto.
 
-4. **Cap de longitud en artefactos.** `validate` rechaza cualquier archivo que exceda ~2000 caracteres (~500 tokens), forzando al modelo a resumir. Previene inflación de contexto en rehidrataciones futuras.
-
-5. **Exit codes machine-readable.** Todos los comandos devuelven códigos de salida diferenciados para que el harness bifurque el flujo sin depender de que el LLM parsee strings.
-
-6. **`archive` atómico.** `guard.py archive --context X` verifica completitud, valida artefactos, copia a archive, y limpia la sesión en un solo comando. El modelo no necesita orquestar copy+verify+delete manualmente.
-
-7. **Stale-detection en write lock.** El mutex de escritura incluye PID y timestamp. Si el proceso que lo creó murió, el lock se recupera automáticamente sin esperar timeout.
-
-8. **Ownership validation en `release-task`.** Con `--agent-id`, se valida que quien libera una tarea sea quien la reclamó. `--force` permite override.
-
-### ⚠️ Pendiente
-
-9. **Reducir el SKILL.md para modelos con ventanas chicas.** El protocolo actual funciona para frontier models pero puede ser denso para modelos con peor adherencia a instrucciones largas. Plan de mitigación:
-   - Comprimir las secciones declarativas.
-   - Considerar un perfil `SKILL-slim.md` como checklist plano sin explicación, seleccionable con `install.sh --profile slim|full`.
-
-**Principio general:** cada mitigación implementada mueve una decisión que antes dependía de que el LLM interpretara bien el prompt, hacia una decisión que el CLI resuelve de forma determinista y devuelve como dato verificable.
+**Principio rector:** Cada mitigación implementada desplaza decisiones heurísticas —que antes dependían de la interpretación semántica del LLM— hacia validaciones estrictas que el CLI resuelve de forma determinista y auditable.
