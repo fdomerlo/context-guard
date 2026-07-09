@@ -29,13 +29,18 @@ El middleware (`guard.py`) es Python puro sobre stdlib, sin llamadas a ningún p
 ## 🚀 Instalación y Configuración
 
 ```bash
-bash scripts/install.sh --target <antigravity|opencode>
+bash scripts/install.sh
 ```
 
-Esto realiza dos acciones:
+Esto copia el núcleo (package `guard/`, shim `guard.py`, sub-skills) a `~/.agents/skills/context-guard/`.
 
-1. Copia el núcleo a `~/.agents/skills/context-guard/` y el middleware ACID a `bin/guard.py`.
-2. Inyecta el *Boot Prompt* obligatorio en el archivo de instrucciones globales del harness elegido (`~/.gemini/GEMINI.md` para Antigravity, `~/.config/opencode/AGENTS.md` para OpenCode).
+### Inyección de Boot Prompt (Opcional)
+
+Si deseas inyectar el *Boot Prompt* obligatorio en el archivo de instrucciones globales de tu orquestador, especifica el target (`antigravity` o `opencode`):
+
+```bash
+bash scripts/install.sh --target <antigravity|opencode>
+```
 
 El bloque inyectado es el mismo en ambos casos:
 
@@ -49,6 +54,30 @@ MANDATORY BOOTSTRAP — execute before responding to anything:
    and act accordingly (Cold Boot, Resume, or Recovery).
 ```
 
+---
+
+## 📦 Arquitectura
+
+```text
+context-guard/
+├── SKILL.md                          # Protocolo/contrato para el agente
+├── skills/                           # Sub-skills invocables
+│   ├── tasks/SKILL.md                # Desglose de tareas desde reference_docs
+│   ├── review/SKILL.md               # Auditoría estática contra specs
+│   └── verify/SKILL.md               # Verificación dinámica (tests + build)
+├── scripts/
+│   ├── install.sh                    # Instalador multi-target
+│   ├── guard.py                      # Shim CLI (preserva invocación original)
+│   └── guard/                        # Package modular (Python stdlib puro)
+│       ├── cli.py                    # Argparse + dispatch + sys.exit()
+│       ├── commands.py               # Lógica de negocio (retorna resultados)
+│       ├── errors.py                 # Exit codes + excepciones tipadas
+│       ├── locking.py                # Write lock + session lock + stale detection
+│       ├── manifest.py               # I/O atómico del manifest
+│       └── paths.py                  # Rutas + constantes
+└── tests/                            # Suite de tests (unittest, stdlib)
+```
+
 ### Concurrencia: lock de sesión vs. lock de tarea
 
 Context Guard maneja la concurrencia en **dos niveles**, diseñados para permitir paralelismo real entre agentes:
@@ -56,17 +85,55 @@ Context Guard maneja la concurrencia en **dos niveles**, diseñados para permiti
 | Nivel | Comando | Duración | Propósito |
 |---|---|---|---|
 | **Sesión** | `claim` / `release` | Efímero (segundos) | Serializa cold-boot y archivado. Se libera inmediatamente al terminar la inicialización. |
-| **Tarea** | `claim-task` / `release-task` | Por ítem | Lock granular por tarea de `blockers_todo.md`. Permite que múltiples agentes trabajen en tareas distintas del mismo contexto simultáneamente. |
+| **Tarea** | `claim-task` / `release-task` | Por ítem | Lock granular por tarea. Permite que múltiples agentes trabajen en tareas distintas del mismo contexto simultáneamente. |
 
-En **Antigravity**, los subagentes corren en workspaces aislados; rara vez compiten por el mismo manifest, así que los locks son mayormente defensivos. En **OpenCode**, que soporta multi-sesión real sobre el mismo directorio de proyecto, los locks de tarea son los que habilitan concurrencia productiva — un agente puede ejecutar una tarea mientras otro trabaja en otra distinta, sin bloqueo mutuo. Si vas a probar concurrencia real, hacelo contra OpenCode primero.
+### Pipeline de cierre
+
+Cuando todas las tareas están completas, el agente ejecuta el pipeline de cierre:
+
+```text
+check-completion → review → verify → archive
+```
+
+---
+
+## 🔧 Comandos CLI
+
+| Comando | Tipo | Propósito |
+|---|---|---|
+| `claim` | Sesión | Check + acquire atómico. Maneja stale-takeover si el TTL expiró |
+| `acquire` | Sesión | Alias retrocompatible de `claim` |
+| `release` | Sesión | Libera el lock de sesión |
+| `check-lock` | Sesión (read-only) | Muestra estado del lock (FREE/ACTIVE/STALE) |
+| `claim-task` | Tarea | Lock granular por tarea individual |
+| `release-task` | Tarea | Libera lock de una tarea (soporta `--agent-id` para validación de ownership y `--force` para override) |
+| `check-completion` | Utilidad | Parsea `tasks.md` y/o `blockers_todo.md`, reporta completitud por fuente y agregada |
+| `validate` | Utilidad | Verifica existencia y tamaño de artefactos (required + optional) |
+| `archive` | Utilidad | Archiva un contexto completado (verifica completitud, valida, copia, borra) |
+
+### Exit codes
+
+```text
+0 = EXIT_OK
+1 = EXIT_LOCK_HELD         (otra sesión activa)
+2 = EXIT_LOCK_CONTENDED    (perdiste la carrera por un stale lock)
+3 = EXIT_VALIDATION        (artefacto mal formado o excede cap)
+4 = EXIT_GENERIC           (manifest corrupto)
+```
 
 ---
 
 ## 📋 Requisitos
 
-* **Python 3** — `guard.py` es stdlib pura, se ejecuta con `python3` directo. No requiere dependencias externas. `uv` es opcional si preferís ejecución aislada (`uv run guard.py ...`).
+* **Python 3** — `guard.py` es stdlib pura, se ejecuta con `python3` directo. No requiere dependencias externas.
 * **git** — auto-discovery del estado del repositorio (`git diff`).
 * Un orquestador con soporte de *tool use* / ejecución de shell (Antigravity CLI, OpenCode, u otro compatible con el Agent Skills Spec).
+
+## 🧪 Tests
+
+```bash
+python3 -m unittest discover tests/ -v
+```
 
 ## 🧹 Desinstalación
 
@@ -89,19 +156,24 @@ El middleware es determinista y no depende del modelo. **El protocolo del `SKILL
 
 1. **`claim` atómico.** `guard.py claim --context X` colapsa check+acquire+stale-takeover en una sola llamada. El modelo no necesita secuenciar `check-lock` → `acquire` manualmente.
 
-2. **`check-completion` determinista.** `guard.py check-completion --context X` parsea `blockers_todo.md` y devuelve `total/completed/all_complete` como datos estructurados. El modelo no cuenta checkboxes a mano.
+2. **`check-completion` determinista.** `guard.py check-completion --context X` parsea `tasks.md` y/o `blockers_todo.md` y devuelve datos estructurados por fuente. El modelo no cuenta checkboxes a mano.
 
-3. **`validate` para artefactos generados.** `guard.py validate --context X` verifica existencia de `objective.md`, `snapshot.md`, `blockers_todo.md` antes de dar por cerrado el cold boot. Un archivo faltante se detecta en el momento, no en la próxima sesión.
+3. **`validate` para artefactos generados.** `guard.py validate --context X` verifica existencia de artefactos obligatorios y tamaño de todos los artefactos presentes. Un archivo faltante se detecta en el momento, no en la próxima sesión.
 
 4. **Cap de longitud en artefactos.** `validate` rechaza cualquier archivo que exceda ~2000 caracteres (~500 tokens), forzando al modelo a resumir. Previene inflación de contexto en rehidrataciones futuras.
 
-5. **Exit codes machine-readable.** Todos los comandos devuelven códigos de salida diferenciados (`0` éxito, `1` lock ocupado, `2` contención, `3` validación, `4` manifest corrupto) para que el harness bifurque el flujo sin depender de que el LLM parsee strings.
+5. **Exit codes machine-readable.** Todos los comandos devuelven códigos de salida diferenciados para que el harness bifurque el flujo sin depender de que el LLM parsee strings.
+
+6. **`archive` atómico.** `guard.py archive --context X` verifica completitud, valida artefactos, copia a archive, y limpia la sesión en un solo comando. El modelo no necesita orquestar copy+verify+delete manualmente.
+
+7. **Stale-detection en write lock.** El mutex de escritura incluye PID y timestamp. Si el proceso que lo creó murió, el lock se recupera automáticamente sin esperar timeout.
+
+8. **Ownership validation en `release-task`.** Con `--agent-id`, se valida que quien libera una tarea sea quien la reclamó. `--force` permite override.
 
 ### ⚠️ Pendiente
 
-6. **Reducir el SKILL.md para modelos con ventanas chicas.** El protocolo actual (96 líneas, 5 secciones jerárquicas) funciona para frontier models pero puede ser denso para modelos con peor adherencia a instrucciones largas. Plan de mitigación:
-   - Comprimir las secciones declarativas (Paradigm, Dual-Language) de 8 líneas a 3.
+9. **Reducir el SKILL.md para modelos con ventanas chicas.** El protocolo actual funciona para frontier models pero puede ser denso para modelos con peor adherencia a instrucciones largas. Plan de mitigación:
+   - Comprimir las secciones declarativas.
    - Considerar un perfil `SKILL-slim.md` como checklist plano sin explicación, seleccionable con `install.sh --profile slim|full`.
-   - El principio es el mismo: mover decisiones del prompt al CLI, reducir la cantidad de texto que el modelo necesita procesar.
 
 **Principio general:** cada mitigación implementada mueve una decisión que antes dependía de que el LLM interpretara bien el prompt, hacia una decisión que el CLI resuelve de forma determinista y devuelve como dato verificable.

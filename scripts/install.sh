@@ -2,19 +2,23 @@
 set -euo pipefail
 
 # ============================================================================
-# context-guard — Install Script (Antigravity CLI / Swarm Edition)
+# context-guard — Install Script
 # Instala la skill en la ruta global ~/.agents/skills/ y el motor en bin/
+# Soporta targets: antigravity, opencode
 # ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 SKILL_SRC="$REPO_DIR/SKILL.md"
-MANAGER_SRC="$SCRIPT_DIR/guard.py"
+GUARD_SHIM="$SCRIPT_DIR/guard.py"
+GUARD_PKG="$SCRIPT_DIR/guard"
+SKILLS_SRC="$REPO_DIR/skills"
 
 # Standard Agent Skills Spec global path
 SKILLS_DIR="$HOME/.agents/skills"
 SKILL_DEST="$SKILLS_DIR/context-guard"
 BIN_DEST="$SKILL_DEST/bin"
+SKILLS_DEST="$SKILL_DEST/skills"
 
 MARKER_BEGIN="<!-- context-guard:begin -->"
 MARKER_END="<!-- context-guard:end -->"
@@ -27,58 +31,45 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 info() { echo -e "  ${CYAN}→${NC} $1"; }
 
 [ -f "$SKILL_SRC" ] || { echo "Error: SKILL.md not found in $REPO_DIR"; exit 1; }
-[ -f "$MANAGER_SRC" ] || { echo "Error: guard.py not found in $SCRIPT_DIR"; exit 1; }
+[ -f "$GUARD_SHIM" ] || { echo "Error: guard.py not found in $SCRIPT_DIR"; exit 1; }
+[ -d "$GUARD_PKG" ] || { echo "Error: guard/ package not found in $SCRIPT_DIR"; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Core installation — shared by all targets
+# ---------------------------------------------------------------------------
 
 install_core() {
     info "Copiando archivos base..."
     mkdir -p "$BIN_DEST"
     cp "$SKILL_SRC" "$SKILL_DEST/"
-    cp "$MANAGER_SRC" "$BIN_DEST/"
+    cp "$GUARD_SHIM" "$BIN_DEST/"
+    cp -r "$GUARD_PKG" "$BIN_DEST/"
     chmod +x "$BIN_DEST/guard.py"
+
+    # Copiar sub-skills si existen
+    if [ -d "$SKILLS_SRC" ]; then
+        mkdir -p "$SKILLS_DEST"
+        cp -r "$SKILLS_SRC"/* "$SKILLS_DEST/"
+        ok "Sub-skills copiadas a $SKILLS_DEST"
+    fi
+
     ok "Core y Middleware instalados en $SKILL_DEST"
 }
 
 # ---------------------------------------------------------------------------
-
-install_antigravity() {
-    install_core
-    local gemini="$HOME/.gemini/GEMINI.md"
-    
-    info "Inyectando boot prompt en Antigravity ($gemini)..."
-    mkdir -p "$(dirname "$gemini")"
-    
-    # Remover bloque viejo si existe
-    if [ -f "$gemini" ] && grep -q "$MARKER_BEGIN" "$gemini"; then
-        awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$gemini" > "${gemini}.tmp" && mv "${gemini}.tmp" "$gemini"
-    fi
-    
-    echo -e "\n$MARKER_BEGIN" >> "$gemini"
-    echo "## ACTIVE PERSISTENCE CONTRACT: context-guard" >> "$gemini"
-    echo "MANDATORY BOOTSTRAP — execute before responding to anything:" >> "$gemini"
-    echo "1. Call read_file on \`$SKILL_DEST/SKILL.md\`." >> "$gemini"
-    echo "2. Follow every instruction in that file as your absolute state contract." >> "$gemini"
-    echo "3. Check for an active context at \`.context-guard/sessions/{context}/manifest.json\`" >> "$gemini"
-    echo "   and act accordingly (Cold Boot, Resume, or Recovery)." >> "$gemini"
-    echo "$MARKER_END" >> "$gemini"
-    
-    ok "Integración con Antigravity CLI completada."
-}
-
+# Boot prompt injection — common logic
 # ---------------------------------------------------------------------------
 
-install_opencode() {
-    install_core
-    # OpenCode carga instrucciones globales desde AGENTS.md en su config dir,
-    # de forma análoga a como Antigravity carga GEMINI.md.
-    # Verificá esta ruta contra tu versión de opencode.json (campo "instructions")
-    # antes de asumirla como definitiva.
-    local agents_md="$HOME/.config/opencode/AGENTS.md"
+inject_boot_prompt() {
+    local target_file="$1"
+    local target_name="$2"
 
-    info "Inyectando boot prompt en OpenCode ($agents_md)..."
-    mkdir -p "$(dirname "$agents_md")"
+    info "Inyectando boot prompt en $target_name ($target_file)..."
+    mkdir -p "$(dirname "$target_file")"
 
-    if [ -f "$agents_md" ] && grep -q "$MARKER_BEGIN" "$agents_md"; then
-        awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$agents_md" > "${agents_md}.tmp" && mv "${agents_md}.tmp" "$agents_md"
+    # Remover bloque viejo si existe
+    if [ -f "$target_file" ] && grep -q "$MARKER_BEGIN" "$target_file"; then
+        awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$target_file" > "${target_file}.tmp" && mv "${target_file}.tmp" "$target_file"
     fi
 
     {
@@ -91,18 +82,32 @@ install_opencode() {
         echo "3. Check for an active context at \`.context-guard/sessions/{context}/manifest.json\`"
         echo "   and act accordingly (Cold Boot, Resume, or Recovery)."
         echo "$MARKER_END"
-    } >> "$agents_md"
+    } >> "$target_file"
 
-    ok "Integración con OpenCode completada."
+    ok "Integración con $target_name completada."
 }
 
+# ---------------------------------------------------------------------------
+# Target-specific installers (Boot Prompt Injection)
+# ---------------------------------------------------------------------------
+
+install_antigravity_hook() {
+    inject_boot_prompt "$HOME/.gemini/GEMINI.md" "Antigravity"
+}
+
+install_opencode_hook() {
+    inject_boot_prompt "$HOME/.config/opencode/AGENTS.md" "OpenCode"
+}
+
+# ---------------------------------------------------------------------------
+# Uninstall
 # ---------------------------------------------------------------------------
 
 uninstall() {
     local target="$1"
     info "Desinstalando Context Guard..."
     rm -rf "$SKILL_DEST"
-    ok "Archivos base eliminados."
+    ok "Archivos base eliminados de $SKILL_DEST."
 
     local gemini="$HOME/.gemini/GEMINI.md"
     local agents_md="$HOME/.config/opencode/AGENTS.md"
@@ -122,6 +127,10 @@ uninstall() {
     fi
 }
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 echo -e "\n${CYAN}${BOLD}Context Guard — Installer${NC}"
 echo -e "  Skills path: $SKILL_DEST\n"
 
@@ -131,7 +140,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --target)    TARGET="$2"; shift 2 ;;
     --uninstall) UNINSTALL=true; shift 1 ;;
-    *) echo "Usage: install.sh --target antigravity | --target opencode | --uninstall"; exit 1 ;;
+    *) echo "Usage: install.sh [--target antigravity | opencode] | --uninstall"; exit 1 ;;
   esac
 done
 
@@ -140,10 +149,18 @@ if [ "$UNINSTALL" == "true" ]; then
     exit 0
 fi
 
+# 1. Siempre instalar el core (archivos en .agents/skills)
+install_core
+
+# 2. Inyectar boot prompt si se especificó target
 if [ "$TARGET" == "antigravity" ]; then
-    install_antigravity
+    install_antigravity_hook
 elif [ "$TARGET" == "opencode" ]; then
-    install_opencode
+    install_opencode_hook
+elif [ -n "$TARGET" ]; then
+    echo "Target no soportado: $TARGET"
+    exit 1
 else
-    echo "Por favor, especifica el target: bash scripts/install.sh --target antigravity | --target opencode"
+    info "Skipping boot prompt injection (no --target specified)."
+    info "Para inyectar el boot prompt, usa: bash scripts/install.sh --target <antigravity|opencode>"
 fi
