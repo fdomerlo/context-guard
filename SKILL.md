@@ -41,14 +41,14 @@ If `.context-guard/sessions/{context}/manifest.json` is missing:
 
 1. Auto-discover the project stack (`ls package.json pyproject.toml go.mod Cargo.toml...`)
 2. Acquire the initial lock via terminal using the global middleware:
-   `python3 ~/.agents/skills/context-guard/bin/guard.py claim --context {target-objective} --ttl 300`
+   `python3 ~/.agents/skills/context-guard/scripts/guard.py claim --context {target-objective} --ttl 300`
 3. Generate `snapshot.md` and `objective.md` inside `.context-guard/sessions/{context}/`.
-4. **Task generation**: If reference documents (SPECs, ADRs, design docs) exist, populate `reference_docs` in the manifest and invoke the `tasks` skill (see `skills/tasks/SKILL.md`) to generate `tasks.md`. Otherwise, generate `blockers_todo.md` with a simple task list.
+4. **Task generation**: If reference documents (SPECs, ADRs, design docs) exist, populate `reference_docs` in the manifest and invoke the `tasks` skill (see `references/tasks_list.md`) to generate `tasks.md`. Otherwise, generate `blockers_todo.md` with a simple task list.
 5. Validate the generated artifacts:
-   `python3 ~/.agents/skills/context-guard/bin/guard.py validate --context {context}`
+   `python3 ~/.agents/skills/context-guard/scripts/guard.py validate --context {context}`
    If exit code ≠ 0, fix the flagged file(s) before continuing — do not proceed on a FAIL.
 6. Release the session lock immediately after cold boot completes:
-   `python3 ~/.agents/skills/context-guard/bin/guard.py release --context {context}`
+   `python3 ~/.agents/skills/context-guard/scripts/guard.py release --context {context}`
 7. Output a welcome message in SPANISH and HALT.
 
 ### STEP 2 — REHYDRATION
@@ -66,12 +66,12 @@ Work on tasks from `tasks.md` (or `blockers_todo.md`) using **per-task locking**
 2. Update `snapshot.md` if necessary.
 3. For each unchecked item in the task file:
    a. Claim the task:
-      `python3 ~/.agents/skills/context-guard/bin/guard.py claim-task --context {context} --task-id {task-id}`
+      `python3 ~/.agents/skills/context-guard/scripts/guard.py claim-task --context {context} --task-id {task-id}`
       * Exit code 0: proceed with the task.
       * Exit code 1 (`FAIL|TASK_CLAIMED`): another agent owns this task — skip to the next unchecked item.
    b. Execute the task.
    c. Release the task when done:
-      `python3 ~/.agents/skills/context-guard/bin/guard.py release-task --context {context} --task-id {task-id}`
+      `python3 ~/.agents/skills/context-guard/scripts/guard.py release-task --context {context} --task-id {task-id}`
 4. When yielding control back to the user (even if blocked), there is no session lock to release — task locks are already released per-item above.
 
 ## 4. DUAL-LANGUAGE BOUNDARY
@@ -86,20 +86,20 @@ When all tasks appear complete, execute the **closure pipeline**:
 ### STEP 5.1 — CHECK COMPLETION
 
 Verify with the CLI:
-`python3 ~/.agents/skills/context-guard/bin/guard.py check-completion --context {context}`
+`python3 ~/.agents/skills/context-guard/scripts/guard.py check-completion --context {context}`
 
 If `all_complete=true` (or `aggregate_all_complete=true` when both task files exist), proceed. Otherwise, continue working on incomplete tasks.
 
 ### STEP 5.2 — REVIEW (Static Audit)
 
-Invoke the `review` skill (see `skills/review/SKILL.md`):
+Invoke the `review` skill (see `references/review.md`):
 - Compares code against `reference_docs` (if available)
 - Generates `review-report.md`
 - If CRITICAL issues found: fix before proceeding
 
 ### STEP 5.3 — VERIFY (Dynamic Validation)
 
-Invoke the `verify` skill (see `skills/verify/SKILL.md`):
+Invoke the `verify` skill (see `references/verify.md`):
 - Executes tests and build
 - Generates `verify-report.md`
 - If CRITICAL issues found: fix before proceeding
@@ -108,7 +108,7 @@ Invoke the `verify` skill (see `skills/verify/SKILL.md`):
 
 Once review and verify pass:
 
-`python3 ~/.agents/skills/context-guard/bin/guard.py archive --context {context}`
+`python3 ~/.agents/skills/context-guard/scripts/guard.py archive --context {context}`
 
 This command atomically:
 1. Re-validates completeness and artifact integrity
@@ -124,6 +124,6 @@ Output a clean technical summary in Spanish.
 
 | Skill | Path | Purpose |
 |-------|------|---------|
-| tasks | `skills/tasks/SKILL.md` | Generate atomic task list from reference_docs |
-| review | `skills/review/SKILL.md` | Static code audit against requirements |
-| verify | `skills/verify/SKILL.md` | Dynamic verification (tests + build) |
+| tasks_list | `references/tasks_list.md` | Generate atomic task list from reference_docs |
+| review | `references/review.md` | Static code audit against requirements |
+| verify | `references/verify.md` | Dynamic verification (tests + build) |

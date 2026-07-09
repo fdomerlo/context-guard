@@ -15,6 +15,7 @@ from guard.errors import (
     CommandResult,
     EXIT_OK,
     EXIT_LOCK_HELD,
+    EXIT_GENERIC,
     EXIT_VALIDATION,
     ValidationError,
 )
@@ -80,7 +81,7 @@ def cmd_claim_task(context, task_id, agent_id=None):
     def _do():
         m = load_manifest(context)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_LOCK_HELD)
+            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
         tasks = m.setdefault("task_claims", {})
         existing = tasks.get(task_id)
         if existing and existing["status"] == "claimed":
@@ -104,7 +105,7 @@ def cmd_release_task(context, task_id, agent_id=None, force=False):
     def _do():
         m = load_manifest(context)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_LOCK_HELD)
+            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
         tasks = m.get("task_claims", {})
         task = tasks.get(task_id)
         if not task or task["status"] != "claimed":

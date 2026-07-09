@@ -154,15 +154,14 @@ El middleware es determinista y no depende del modelo. **El protocolo del `SKILL
 
 ### ✅ Implementado (mitigaciones que reducen la superficie de error del modelo)
 
-1. **`claim` atómico:** `guard.py claim --context X` colapsa check+acquire+stale-takeover en una sola llamada. El modelo no necesita secuenciar `check-lock` → `acquire` manualmente.
+1. **`claim` atómico:** `guard.py claim --context X` colapsa check+acquire+stale-takeover en una sola llamada. El modelo no necesita secuenciar check-lock y adquisición manualmente.
 2. **`check-completion` determinista:** `guard.py check-completion --context X` parsea `tasks.md` y/o `blockers_todo.md` devolviendo métricas estructuradas. El modelo ya no necesita contar checkboxes a mano, evitando alucinaciones numéricas.
-3. **`validate` preventivo:** `guard.py validate --context X` verifica la existencia de artefactos obligatorios y audita su tamaño. Los errores se atrapan en tiempo de ejecución, no en el siguiente reinicio.
-4. **Cap de longitud en artefactos:** Se rechaza automáticamente cualquier archivo que exceda el límite de caracteres, forzando al modelo a sintetizar y previniendo la inflación de contexto en rehidrataciones futuras.
-5. **Exit codes semánticos (machine-readable):** Todos los comandos devuelven códigos de salida diferenciados (e.g., `EXIT_LOCK_HELD`, `EXIT_VALIDATION`). El orquestador puede bifurcar el flujo de control sin depender de que el LLM parsee strings de texto.
-6. **`archive` atómico:** `guard.py archive --context X` orquesta la validación final, el copiado y la limpieza de sesión en un único paso transaccional. Elimina la necesidad de que el modelo encadene operaciones complejas de I/O sobre el file system.
-7. **Detección de locks huérfanos (Stale-detection):** El mutex de escritura (read-modify-write) incluye el PID del proceso. Si el agente es interrumpido bruscamente y el proceso muere, el lock se recupera automáticamente sin tener que esperar un timeout ciego.
-8. **Validación de ownership en tareas:** `release-task --agent-id` asegura que un agente no libere accidentalmente una tarea reclamada por otro agente en sesiones concurrentes.
-9. **Desacople en Sub-skills:** Procesos complejos como el desglose funcional (`tasks`), auditoría estática (`review`) y validación dinámica (`verify`) se aislaron en skills independientes. Esto achica el prompt principal del enjambre y carga las instrucciones específicas solo en la fase del pipeline que las requiere.
+3. **`validate` preventivo y límite de longitud:** `guard.py validate --context X` verifica la existencia de artefactos obligatorios y audita su tamaño. Se rechaza automáticamente cualquier archivo que exceda el límite de caracteres, atrapando errores en tiempo de ejecución para forzar al modelo a sintetizar y prevenir la inflación de contexto.
+4. **Exit codes semánticos (machine-readable):** Todos los comandos devuelven códigos de salida diferenciados (e.g., `EXIT_LOCK_HELD`, `EXIT_VALIDATION`). El orquestador puede bifurcar el flujo de control sin depender de que el LLM parsee strings de texto.
+5. **`archive` atómico:** `guard.py archive --context X` orquesta la validación final, el copiado y la limpieza de sesión en un único paso transaccional. Elimina la necesidad de que el modelo encadene operaciones complejas de I/O sobre el file system.
+6. **Detección de locks huérfanos (Stale-detection por PID):** El mutex de escritura (read-modify-write) incluye el PID del proceso en su lockfile. Si el agente es interrumpido bruscamente y el proceso muere, el lock se recupera automáticamente verificando la vitalidad del proceso local, sin depender de un timeout ciego (a diferencia del lock de sesión que opera por TTL).
+7. **Validación de ownership en tareas:** `release-task --agent-id` asegura que un agente no libere accidentalmente una tarea reclamada por otro agente en sesiones concurrentes.
+8. **Desacople en Sub-skills:** Procesos complejos como el desglose funcional (`tasks`), auditoría estática (`review`) y validación dinámica (`verify`) se aislaron en skills independientes. Esto achica el prompt principal del enjambre y carga las instrucciones específicas solo en la fase del pipeline que las requiere.
 
 ### ⚠️ Pendiente (Hoja de ruta)
 
