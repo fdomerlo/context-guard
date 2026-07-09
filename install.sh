@@ -4,7 +4,7 @@ set -euo pipefail
 # ============================================================================
 # context-guard — Install Script
 # Instala la skill en la ruta global ~/.agents/skills/ y el motor en scripts/
-# Soporta targets: antigravity, opencode
+# Soporta targets: antigravity, opencode. Sin --target, instala en ambos.
 # ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,11 +30,11 @@ warn() { echo -e "  ${YELLOW}!${NC} $1"; }
 info() { echo -e "  ${CYAN}→${NC} $1"; }
 
 [ -f "$SKILL_SRC" ] || { echo "Error: SKILL.md not found in $REPO_DIR"; exit 1; }
-[ -f "$GUARD_SHIM" ] || { echo "Error: guard.py not found in $SCRIPT_DIR"; exit 1; }
-[ -d "$GUARD_PKG" ] || { echo "Error: guard/ package not found in $SCRIPT_DIR"; exit 1; }
+[ -f "$GUARD_SHIM" ] || { echo "Error: guard.py not found in $REPO_DIR/scripts"; exit 1; }
+[ -d "$GUARD_PKG" ] || { echo "Error: guard/ package not found in $REPO_DIR/scripts"; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Core installation — shared by all targets
+# Core installation — shared por todos los targets
 # ---------------------------------------------------------------------------
 
 install_core() {
@@ -55,7 +55,7 @@ install_core() {
 }
 
 # ---------------------------------------------------------------------------
-# Boot prompt injection — common logic
+# Boot prompt injection — lógica común
 # ---------------------------------------------------------------------------
 
 inject_boot_prompt() {
@@ -65,7 +65,6 @@ inject_boot_prompt() {
     info "Inyectando boot prompt en $target_name ($target_file)..."
     mkdir -p "$(dirname "$target_file")"
 
-    # Remover bloque viejo si existe
     if [ -f "$target_file" ] && grep -q "$MARKER_BEGIN" "$target_file"; then
         awk "/$MARKER_BEGIN/{flag=1} /$MARKER_END/{flag=0; next} !flag" "$target_file" > "${target_file}.tmp" && mv "${target_file}.tmp" "$target_file"
     fi
@@ -78,16 +77,12 @@ inject_boot_prompt() {
         echo "1. Call read_file on \`$SKILL_DEST/SKILL.md\`."
         echo "2. Follow every instruction in that file as your absolute state contract."
         echo "3. Check for an active context at \`.context-guard/sessions/{context}/manifest.json\`"
-        echo "   and act accordingly (Cold Boot, Resume, or Recovery)."
+        echo "4. Act accordingly to the context state (Cold Boot, Resume, or Recovery)."
         echo "$MARKER_END"
     } >> "$target_file"
 
     ok "Integración con $target_name completada."
 }
-
-# ---------------------------------------------------------------------------
-# Target-specific installers (Boot Prompt Injection)
-# ---------------------------------------------------------------------------
 
 install_antigravity_hook() {
     inject_boot_prompt "$HOME/.gemini/GEMINI.md" "Antigravity"
@@ -138,7 +133,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --target)    TARGET="$2"; shift 2 ;;
     --uninstall) UNINSTALL=true; shift 1 ;;
-    *) echo "Usage: install.sh [--target antigravity | opencode] | --uninstall"; exit 1 ;;
+    *) echo "Usage: install.sh [--target antigravity | opencode] | --uninstall [--target ...]"; exit 1 ;;
   esac
 done
 
@@ -147,19 +142,17 @@ if [ "$UNINSTALL" == "true" ]; then
     exit 0
 fi
 
-# 1. Siempre instalar el core (archivos en .agents/skills)
 install_core
 
-# 2. Inyectar boot prompt en targets especificados (o en ambos si no se especifica)
-if [ "$TARGET" == "antigravity" ] || [ -z "$TARGET" ]; then
+if [ "$TARGET" == "antigravity" ]; then
     install_antigravity_hook
-fi
-
-if [ "$TARGET" == "opencode" ] || [ -z "$TARGET" ]; then
+elif [ "$TARGET" == "opencode" ]; then
     install_opencode_hook
-fi
-
-if [ -n "$TARGET" ] && [ "$TARGET" != "antigravity" ] && [ "$TARGET" != "opencode" ]; then
+elif [ -n "$TARGET" ]; then
     echo "Target no soportado: $TARGET"
     exit 1
+else
+    info "Sin --target especificado: instalando ambos canales."
+    install_antigravity_hook
+    install_opencode_hook
 fi
