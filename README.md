@@ -163,6 +163,9 @@ El middleware es determinista y no depende del modelo. **El protocolo del `SKILL
 7. **Validación de ownership en tareas:** `release-task --agent-id` asegura que un agente no libere accidentalmente una tarea reclamada por otro agente en sesiones concurrentes.
 8. **Desacople en Sub-skills:** Procesos complejos como el desglose funcional (`tasks`), auditoría estática (`review`) y validación dinámica (`verify`) se aislaron en skills independientes. Esto achica el prompt principal del enjambre y carga las instrucciones específicas solo en la fase del pipeline que las requiere.
 
+
+<!-- 
+
 ### ⚠️ Pendiente (Hoja de ruta)
 
 * **Perfil Slim para modelos limitados:** El protocolo actual del `SKILL.md` es estable en frontier models, pero puede ser denso para modelos con ventanas de contexto chicas o baja adherencia a instrucciones.
@@ -171,5 +174,3 @@ El middleware es determinista y no depende del modelo. **El protocolo del `SKILL
    - *Mejora propuesta:* Integración automática con otros harness populares (ej. RooCode, Cline) modificando sus system prompts dinámicamente.
 * **Telemetría / Auditoría de estado (Event Sourcing):** 
    - *Mejora propuesta:* Mantener un log de transacciones estructurado (JSONL) con todas las mutaciones realizadas sobre el `manifest.json`, para facilitar el post-mortem debugging si un agente rompe la integridad lógica del contexto.
-
-**Principio rector:** Cada mitigación implementada desplaza decisiones heurísticas —que antes dependían de la interpretación semántica del LLM— hacia validaciones estrictas que el CLI resuelve de forma determinista y auditable.
