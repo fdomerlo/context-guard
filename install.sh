@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ============================================================================
 # context-guard — Install Script
-# Instala la skill en la ruta global ~/.agents/skills/ y el motor en bin/
+# Instala la skill en la ruta global ~/.agents/skills/ y el motor en scripts/
 # Soporta targets: antigravity, opencode
 # ============================================================================
 
@@ -150,15 +150,16 @@ fi
 # 1. Siempre instalar el core (archivos en .agents/skills)
 install_core
 
-# 2. Inyectar boot prompt si se especificó target
-if [ "$TARGET" == "antigravity" ]; then
+# 2. Inyectar boot prompt en targets especificados (o en ambos si no se especifica)
+if [ "$TARGET" == "antigravity" ] || [ -z "$TARGET" ]; then
     install_antigravity_hook
-elif [ "$TARGET" == "opencode" ]; then
+fi
+
+if [ "$TARGET" == "opencode" ] || [ -z "$TARGET" ]; then
     install_opencode_hook
-elif [ -n "$TARGET" ]; then
+fi
+
+if [ -n "$TARGET" ] && [ "$TARGET" != "antigravity" ] && [ "$TARGET" != "opencode" ]; then
     echo "Target no soportado: $TARGET"
     exit 1
-else
-    info "Skipping boot prompt injection (no --target specified)."
-    info "Para inyectar el boot prompt, usa: bash scripts/install.sh --target <antigravity|opencode>"
 fi
