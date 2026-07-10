@@ -79,11 +79,8 @@ class TestArchiveSuccess(unittest.TestCase):
 
         cmd_archive("ctx-test")
 
-        # Session base directory should be empty (all files removed)
-        if os.path.exists(p["base"]):
-            remaining = os.listdir(p["base"])
-            self.assertEqual(len(remaining), 0,
-                             f"Session dir should be clean, found: {remaining}")
+        # Session base directory should be completely removed
+        self.assertFalse(os.path.exists(p["base"]), "Session directory should be deleted")
 
 
 

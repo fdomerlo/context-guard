@@ -564,13 +564,8 @@ def cmd_archive(context):
                     EXIT_VALIDATION,
                 )
 
-            # Borrar contenido de la sesión original
-            for item in os.listdir(p["base"]):
-                item_path = os.path.join(p["base"], item)
-                if os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-                else:
-                    os.remove(item_path)
+            # Borrar la sesión original por completo
+            shutil.rmtree(p["base"])
 
             return CommandResult(
                 f"SUCCESS|ARCHIVED|{archive_dir}",
