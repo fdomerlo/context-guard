@@ -10,6 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$SCRIPT_DIR"
 SKILL_SRC="$REPO_DIR/SKILL.md"
+SKILL_SLIM_SRC="$REPO_DIR/SKILL-slim.md"
 REFERENCES_SRC="$REPO_DIR/references"
 GUARD_SHIM="$REPO_DIR/scripts/guard.py"
 GUARD_PKG="$REPO_DIR/scripts/guard"
@@ -38,18 +39,28 @@ info() { echo -e "  ${CYAN}→${NC} $1"; }
 # ---------------------------------------------------------------------------
 
 install_core() {
-    info "Copiando archivos base..."
+    local profile="${1:-full}"
+    info "Copiando archivos base (profile: $profile)..."
     mkdir -p "$SCRIPTS_DEST"
-    cp "$SKILL_SRC" "$SKILL_DEST/"
+
+    if [ "$profile" == "slim" ]; then
+        if [ ! -f "$SKILL_SLIM_SRC" ]; then
+            echo "Error: SKILL-slim.md not found in $REPO_DIR"; exit 1
+        fi
+        cp "$SKILL_SLIM_SRC" "$SKILL_DEST/SKILL.md"
+        ok "Perfil slim instalado (SKILL-slim.md → SKILL.md)"
+    else
+        cp "$SKILL_SRC" "$SKILL_DEST/"
+        if [ -d "$REFERENCES_SRC" ]; then
+            mkdir -p "$REFERENCES_DEST"
+            cp -r "$REFERENCES_SRC"/* "$REFERENCES_DEST/"
+            ok "Referencias copiadas a $REFERENCES_DEST"
+        fi
+    fi
+
     cp "$GUARD_SHIM" "$SCRIPTS_DEST/"
     cp -r "$GUARD_PKG" "$SCRIPTS_DEST/"
     chmod +x "$SCRIPTS_DEST/guard.py"
-
-    if [ -d "$REFERENCES_SRC" ]; then
-        mkdir -p "$REFERENCES_DEST"
-        cp -r "$REFERENCES_SRC"/* "$REFERENCES_DEST/"
-        ok "Referencias copiadas a $REFERENCES_DEST"
-    fi
 
     ok "Core y Middleware instalados en $SKILL_DEST"
 }
@@ -128,12 +139,14 @@ echo -e "\n${CYAN}${BOLD}Context Guard — Installer${NC}"
 echo -e "  Skills path: $SKILL_DEST\n"
 
 TARGET=""
+PROFILE="full"
 UNINSTALL=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --target)    TARGET="$2"; shift 2 ;;
+    --profile)   PROFILE="$2"; shift 2 ;;
     --uninstall) UNINSTALL=true; shift 1 ;;
-    *) echo "Usage: install.sh [--target antigravity | opencode] | --uninstall [--target ...]"; exit 1 ;;
+    *) echo "Usage: install.sh [--target antigravity|opencode] [--profile full|slim] | --uninstall [--target ...]"; exit 1 ;;
   esac
 done
 
@@ -142,7 +155,7 @@ if [ "$UNINSTALL" == "true" ]; then
     exit 0
 fi
 
-install_core
+install_core "$PROFILE"
 
 if [ "$TARGET" == "antigravity" ]; then
     install_antigravity_hook

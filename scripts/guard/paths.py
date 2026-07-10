@@ -9,9 +9,9 @@ import time
 # Constantes
 # ---------------------------------------------------------------------------
 
-MAX_ARTIFACT_CHARS = 2000  # ~500 tokens, cap de longitud para artefactos
+MAX_ARTIFACT_CHARS = 6000  # ~1500 tokens, cap de longitud para artefactos
 
-TASK_LINE_RE = re.compile(r"^\s*-\s*\[( |x|X)\]\s*(.*)$")
+TASK_LINE_RE = re.compile(r"^\s*-\s*\[( |x|X|/)\]\s*(.*)$")
 
 
 # ---------------------------------------------------------------------------

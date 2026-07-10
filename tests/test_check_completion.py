@@ -246,5 +246,57 @@ class TestCheckCompletionEdgeCases(unittest.TestCase):
         self.assertIn("completed=1", result.message)
 
 
+class TestCheckCompletionInProgress(unittest.TestCase):
+    """Tests for [/] in-progress marker support."""
+
+    def setUp(self):
+        self._orig_cwd = os.getcwd()
+        self._tmpdir = tempfile.mkdtemp(prefix="guard_test_completion_")
+        os.chdir(self._tmpdir)
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _write_tasks(self, content):
+        p = get_paths("ctx-test")
+        os.makedirs(os.path.dirname(p["tasks"]), exist_ok=True)
+        with open(p["tasks"], "w") as f:
+            f.write(content)
+
+    def test_in_progress_counted_as_incomplete(self):
+        """[/] tasks are counted in total but NOT in completed."""
+        self._write_tasks(
+            "- [x] Done task\n"
+            "- [/] In progress task\n"
+            "- [ ] Pending task\n"
+        )
+        result = cmd_check_completion("ctx-test")
+        self.assertIn("total=3", result.message)
+        self.assertIn("completed=1", result.message)
+        self.assertIn("all_complete=false", result.message)
+
+    def test_all_in_progress_not_complete(self):
+        """All [/] tasks → total > 0, completed = 0."""
+        self._write_tasks("- [/] WIP 1\n- [/] WIP 2\n")
+        result = cmd_check_completion("ctx-test")
+        self.assertIn("total=2", result.message)
+        self.assertIn("completed=0", result.message)
+        self.assertIn("all_complete=false", result.message)
+
+    def test_mixed_states(self):
+        """Mix of [x], [/], [ ] correctly counted."""
+        self._write_tasks(
+            "- [x] Done\n"
+            "- [/] WIP\n"
+            "- [ ] Todo\n"
+            "- [X] Also done\n"
+        )
+        result = cmd_check_completion("ctx-test")
+        self.assertIn("total=4", result.message)
+        self.assertIn("completed=2", result.message)
+
+
 if __name__ == "__main__":
     unittest.main()

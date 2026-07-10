@@ -18,7 +18,7 @@ from guard.commands import (
 )
 from guard.manifest import save_manifest, load_manifest
 from guard.paths import get_paths
-from guard.errors import EXIT_OK, EXIT_LOCK_HELD
+from guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_GENERIC
 
 
 class TestCmdCheckLock(unittest.TestCase):
@@ -208,7 +208,7 @@ class TestCmdTaskClaimRelease(unittest.TestCase):
             os.remove(p["manifest"])
 
         result = cmd_claim_task("ctx-test", "task-1")
-        self.assertEqual(result.exit_code, EXIT_LOCK_HELD)
+        self.assertEqual(result.exit_code, EXIT_GENERIC)
         self.assertIn("FAIL|NO_SESSION", result.message)
 
     def test_task_claim_release_reclaim_cycle(self):

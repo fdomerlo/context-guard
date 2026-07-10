@@ -260,6 +260,260 @@ def cmd_validate(context):
     return CommandResult("SUCCESS|VALIDATE_OK", EXIT_OK)
 
 
+def _parse_task_lines(filepath):
+    """Parse un archivo de tareas y retorna lista de (task_id, description, status).
+
+    status es 'done', 'wip', o 'pending'.
+    task_id se extrae del primer token numérico (ej. '1.1') o se genera
+    como índice secuencial.
+    """
+    import re
+    if not os.path.exists(filepath):
+        return []
+    with open(filepath, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    tasks = []
+    idx = 0
+    task_id_re = re.compile(r"^(\d+(?:\.\d+)?)\s+(.*)$")
+    for line in lines:
+        m = TASK_LINE_RE.match(line)
+        if not m:
+            continue
+        idx += 1
+        marker = m.group(1)
+        description = m.group(2).strip()
+        if marker.lower() == "x":
+            status = "done"
+        elif marker == "/":
+            status = "wip"
+        else:
+            status = "pending"
+        # Extract task_id from description (e.g. "1.1 Create the foo")
+        id_match = task_id_re.match(description)
+        if id_match:
+            task_id = id_match.group(1)
+        else:
+            task_id = str(idx)
+        tasks.append((task_id, description, status))
+    return tasks
+
+
+def cmd_next_task(context, agent_id=None):
+    """Encuentra la siguiente tarea pendiente no reclamada y la reclama
+    atómicamente. Elimina la necesidad de que el modelo itere manualmente."""
+    if not agent_id:
+        agent_id = generate_agent_id()
+
+    p = get_paths(context)
+    m = load_manifest(context)
+    if not m:
+        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+
+    # Buscar en tasks.md primero, luego blockers_todo.md
+    all_tasks = []
+    for filepath in [p["tasks"], p["blockers"]]:
+        all_tasks.extend(_parse_task_lines(filepath))
+
+    claimed = m.get("task_claims", {})
+
+    for task_id, description, status in all_tasks:
+        if status == "done":
+            continue
+        existing = claimed.get(task_id)
+        if existing and existing["status"] == "claimed":
+            continue
+        # Tarea disponible — reclamarla atómicamente
+        result = cmd_claim_task(context, task_id, agent_id)
+        if result.exit_code == EXIT_OK:
+            return CommandResult(
+                f"SUCCESS|NEXT_TASK|{task_id}|{description}",
+                EXIT_OK,
+            )
+
+    return CommandResult("DONE|NO_PENDING_TASKS", EXIT_OK)
+
+
+def cmd_status(context):
+    """Resumen one-shot del estado del contexto para rehidratación rápida."""
+    p = get_paths(context)
+    m = load_manifest(context)
+    lines = []
+
+    if not m:
+        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+
+    lines.append(f"CONTEXT: {m.get('context_name', context)}")
+
+    # Objective
+    obj_path = os.path.join(p["base"], "objective.md")
+    if os.path.exists(obj_path):
+        with open(obj_path, "r", encoding="utf-8") as f:
+            obj_text = f.read().strip()
+        # Take first non-header, non-empty line as summary
+        for obj_line in obj_text.split("\n"):
+            stripped = obj_line.strip()
+            if stripped and not stripped.startswith("#"):
+                lines.append(f"OBJECTIVE: {stripped}")
+                break
+    else:
+        lines.append("OBJECTIVE: (missing)")
+
+    # Progress
+    completion = cmd_check_completion(context)
+    for comp_line in completion.message.split("\n"):
+        if comp_line.startswith("total="):
+            total = comp_line.split("=")[1]
+        if comp_line.startswith("completed="):
+            completed = comp_line.split("=")[1]
+        if comp_line.startswith("aggregate_total="):
+            total = comp_line.split("=")[1]
+        if comp_line.startswith("aggregate_completed="):
+            completed = comp_line.split("=")[1]
+    lines.append(f"PROGRESS: {completed}/{total} tasks complete")
+
+    # Next pending task
+    all_tasks = []
+    for filepath in [p["tasks"], p["blockers"]]:
+        all_tasks.extend(_parse_task_lines(filepath))
+    claimed = m.get("task_claims", {})
+    next_task = None
+    for task_id, description, status in all_tasks:
+        if status == "done":
+            continue
+        existing = claimed.get(task_id)
+        if existing and existing["status"] == "claimed":
+            continue
+        next_task = f"{task_id} - {description}"
+        break
+    if next_task:
+        lines.append(f"NEXT: {next_task}")
+    else:
+        lines.append("NEXT: (none)")
+
+    # Lock status
+    lock = m.get("lock", {})
+    if lock.get("held"):
+        lines.append(f"LOCK: HELD by {lock.get('acquired_by', 'unknown')}")
+    else:
+        lines.append("LOCK: FREE")
+
+    return CommandResult("\n".join(lines), EXIT_OK)
+
+
+# ---------------------------------------------------------------------------
+# Doctor — diagnóstico de salud
+# ---------------------------------------------------------------------------
+
+def cmd_doctor(context):
+    """Diagnóstico de salud del contexto. Detecta problemas comunes que un
+    modelo free-tier puede causar: artefactos faltantes, language boundary
+    violations, task claims huérfanos, manifest corrupto."""
+    p = get_paths(context)
+    findings = []
+
+    # 1. Check session exists
+    m = load_manifest(context)
+    if not m:
+        findings.append("ERROR: No session found (manifest.json missing)")
+        return CommandResult("\n".join(findings), EXIT_GENERIC)
+    findings.append("OK: manifest.json is valid")
+
+    # 2. Check required artifacts
+    required = ["objective.md", "snapshot.md"]
+    task_files = ["blockers_todo.md", "tasks.md"]
+    for fname in required:
+        path = os.path.join(p["base"], fname)
+        if not os.path.exists(path):
+            findings.append(f"ERROR: {fname} is missing")
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if len(content) > MAX_ARTIFACT_CHARS:
+                findings.append(
+                    f"WARN: {fname} exceeds size limit "
+                    f"({len(content)}/{MAX_ARTIFACT_CHARS} chars)")
+            else:
+                findings.append(f"OK: {fname} exists ({len(content)} chars)")
+
+    has_task_file = False
+    for fname in task_files:
+        path = os.path.join(p["base"], fname)
+        if os.path.exists(path):
+            has_task_file = True
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if len(content) > MAX_ARTIFACT_CHARS:
+                findings.append(
+                    f"WARN: {fname} exceeds size limit "
+                    f"({len(content)}/{MAX_ARTIFACT_CHARS} chars)")
+            else:
+                findings.append(f"OK: {fname} exists ({len(content)} chars)")
+    if not has_task_file:
+        findings.append("ERROR: No task file found (need blockers_todo.md or tasks.md)")
+
+    # 3. Check for non-ASCII in artifacts (language boundary hint)
+    # High ratio of non-ASCII chars suggests wrong language
+    for fname in required + task_files:
+        path = os.path.join(p["base"], fname)
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if not content.strip():
+            continue
+        # Check for common Spanish characters in content that should be English
+        spanish_indicators = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
+        spanish_count = sum(content.lower().count(c) for c in spanish_indicators)
+        if spanish_count > 5:
+            findings.append(
+                f"WARN: {fname} may contain Spanish text "
+                f"({spanish_count} Spanish-specific chars found, expected English)")
+
+    # 4. Check stale task claims
+    claims = m.get("task_claims", {})
+    for task_id, claim in claims.items():
+        if claim.get("status") == "claimed":
+            claimed_at = claim.get("claimed_at", "")
+            agent = claim.get("agent_id", "unknown")
+            if claimed_at:
+                try:
+                    claimed_time = datetime.fromisoformat(claimed_at)
+                    elapsed = (datetime.now() - claimed_time).total_seconds()
+                    if elapsed > 1800:  # 30 minutes
+                        findings.append(
+                            f"WARN: Task {task_id} claimed by {agent} "
+                            f"{int(elapsed)}s ago (possibly stale)")
+                    else:
+                        findings.append(
+                            f"OK: Task {task_id} claimed by {agent} "
+                            f"({int(elapsed)}s ago)")
+                except (ValueError, TypeError):
+                    findings.append(
+                        f"WARN: Task {task_id} has unparseable claimed_at: {claimed_at}")
+
+    # 5. Lock status
+    lock = m.get("lock", {})
+    if lock.get("held"):
+        acquired_at = lock.get("acquired_at")
+        if acquired_at:
+            try:
+                elapsed = (datetime.now() - datetime.fromisoformat(acquired_at)).total_seconds()
+                ttl = lock.get("ttl_seconds", 1800)
+                if elapsed > ttl:
+                    findings.append(
+                        f"WARN: Session lock is stale "
+                        f"(held {int(elapsed)}s, TTL={ttl}s)")
+                else:
+                    findings.append(
+                        f"OK: Session lock active ({int(elapsed)}s/{ttl}s)")
+            except (ValueError, TypeError):
+                findings.append("WARN: Session lock has unparseable timestamp")
+    else:
+        findings.append("OK: Session lock is FREE")
+
+    return CommandResult("\n".join(findings), EXIT_OK)
+
+
 # ---------------------------------------------------------------------------
 # Archive
 # ---------------------------------------------------------------------------
@@ -269,7 +523,7 @@ def cmd_archive(context):
 
     1. Verifica que todas las tareas estén completas
     2. Valida artefactos
-    3. Acquiere session lock
+    3. Acquiere session lock (dentro de write lock para atomicidad)
     4. Copia sesión a archive/
     5. Verifica que el archive no esté vacío
     6. Borra sesión original
@@ -299,50 +553,48 @@ def cmd_archive(context):
     # 2. Validar artefactos (puede lanzar ValidationError)
     cmd_validate(context)
 
-    # 3-7. Lock + copy + verify + delete + unlock
-    def _do():
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archive_dir = os.path.join(p["archive"], f"{timestamp}_{context}")
+    # 3-7. Lock + copy + verify + delete + unlock — todo dentro de write_lock
+    def _do_archive():
+        # Acquire session lock con TTL corto para el archivado
+        claim_result = acquire(context, ttl=60)
+        if claim_result.exit_code != EXIT_OK:
+            return claim_result
 
-        # Copiar sesión a archive
-        shutil.copytree(p["base"], archive_dir)
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_dir = os.path.join(p["archive"], f"{timestamp}_{context}")
 
-        # Verificar que el archive no esté vacío
-        archive_contents = os.listdir(archive_dir)
-        if not archive_contents:
+            # Copiar sesión a archive
+            shutil.copytree(p["base"], archive_dir)
+
+            # Verificar que el archive no esté vacío
+            archive_contents = os.listdir(archive_dir)
+            if not archive_contents:
+                return CommandResult(
+                    "FAIL|ARCHIVE_EMPTY",
+                    EXIT_VALIDATION,
+                )
+
+            # Borrar contenido de la sesión original
+            for item in os.listdir(p["base"]):
+                item_path = os.path.join(p["base"], item)
+                if os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
+
             return CommandResult(
-                "FAIL|ARCHIVE_EMPTY",
-                EXIT_VALIDATION,
+                f"SUCCESS|ARCHIVED|{archive_dir}",
+                EXIT_OK,
             )
+        finally:
+            # Liberar session lock — los archivos de sesión ya fueron borrados,
+            # pero el lockfile podría persistir
+            lock_path = p["lock"]
+            if os.path.exists(lock_path):
+                try:
+                    os.remove(lock_path)
+                except FileNotFoundError:
+                    pass
 
-        # Borrar contenido de la sesión original
-        for item in os.listdir(p["base"]):
-            item_path = os.path.join(p["base"], item)
-            if os.path.isdir(item_path):
-                shutil.rmtree(item_path)
-            else:
-                os.remove(item_path)
-
-        return CommandResult(
-            f"SUCCESS|ARCHIVED|{archive_dir}",
-            EXIT_OK,
-        )
-
-    # Acquire session lock con TTL corto para el archivado
-    claim_result = cmd_claim(context, ttl=60)
-    if claim_result.exit_code != EXIT_OK:
-        return claim_result
-
-    try:
-        result = _do()
-    finally:
-        # Liberar session lock — los archivos de sesión ya fueron borrados,
-        # pero el lockfile podría persistir
-        lock_path = get_paths(context)["lock"]
-        if os.path.exists(lock_path):
-            try:
-                os.remove(lock_path)
-            except FileNotFoundError:
-                pass
-
-    return result
+    return with_write_lock(context, _do_archive)
