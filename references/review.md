@@ -25,7 +25,7 @@ También puede ejecutarse manualmente para auditar progreso parcial.
 
 1. Leer el manifest: `.context-guard/sessions/{context}/manifest.json`
 2. Leer los documentos de `reference_docs` del manifest (SPECs, ADRs)
-3. Leer `tasks.md` o `blockers_todo.md` para entender el alcance del trabajo
+3. Leer `tasks.md` para entender el alcance del trabajo
 4. Leer `objective.md` para entender el objetivo
 
 ### Paso 2: Leer Specifications

@@ -39,7 +39,7 @@ Cuando no hay documentos de referencia:
 
 1. Leer el manifest: `.context-guard/sessions/{context}/manifest.json`
 2. Leer `reference_docs` del manifest (si existen)
-3. Leer `tasks.md` o `blockers_todo.md`
+3. Leer `tasks.md`
 
 **REGLA CRÍTICA**: No buscar en todo el código base. Solo leer archivos específicos mencionados en las tareas.
 

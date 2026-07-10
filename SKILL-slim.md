@@ -19,7 +19,7 @@ Check if `.context-guard/sessions/{context}/manifest.json` exists.
 3. Create these files in `.context-guard/sessions/{context}/`:
    - `objective.md` — one paragraph describing the goal
    - `snapshot.md` — current project state (stack, key files, dependencies)
-   - `blockers_todo.md` — checklist of tasks: `- [ ] description`
+   - `tasks.md` — checklist of tasks: `- [ ] description`
 4. Run: `python3 ~/.agents/skills/context-guard/scripts/guard.py validate --context {context}`
    - If exit code ≠ 0: fix the failing file, then re-run validate
 5. Run: `python3 ~/.agents/skills/context-guard/scripts/guard.py release --context {context}`

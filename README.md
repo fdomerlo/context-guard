@@ -108,7 +108,7 @@ check-completion → review → verify → archive
 | `claim-task` | Tarea | Lock granular por tarea individual |
 | `release-task` | Tarea | Libera lock de una tarea (soporta `--agent-id` para validación de ownership y `--force` para override) |
 | `next-task` | Tarea | Busca la siguiente tarea pendiente no reclamada, la reclama atómicamente, y retorna su ID + descripción |
-| `check-completion` | Utilidad | Parsea `tasks.md` y/o `blockers_todo.md`, reporta completitud por fuente y agregada |
+| `check-completion` | Utilidad | Parsea `tasks.md`, reporta completitud |
 | `validate` | Utilidad | Verifica existencia y tamaño de artefactos (required + optional) |
 | `status` | Utilidad | Resumen one-shot del contexto: objetivo, progreso, próxima tarea, estado del lock |
 | `doctor` | Utilidad | Diagnóstico de salud: artefactos, tamaño, idioma, task claims huérfanos, lock state |

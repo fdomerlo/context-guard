@@ -107,20 +107,7 @@ class TestCmdNextTask(unittest.TestCase):
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|NEXT_TASK|2", result.message)
 
-    def test_next_task_from_blockers(self):
-        """next-task also reads from blockers_todo.md."""
-        p = get_paths("ctx-test")
-        os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
-            "lock": {"held": False},
-        })
-        with open(p["blockers"], "w") as f:
-            f.write("- [x] Fixed blocker\n- [ ] Open blocker\n")
-        result = cmd_next_task("ctx-test")
-        self.assertEqual(result.exit_code, EXIT_OK)
-        self.assertIn("SUCCESS|NEXT_TASK", result.message)
-        self.assertIn("Open blocker", result.message)
+
 
 
 class TestCmdStatus(unittest.TestCase):

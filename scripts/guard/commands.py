@@ -152,53 +152,24 @@ def _count_tasks_in_file(filepath):
 
 
 def cmd_check_completion(context):
-    """Parser determinista de blockers_todo.md y tasks.md — el modelo no
-    cuenta checkboxes a mano. Reporta ambos archivos si existen."""
+    """Parser determinista de tasks.md — el modelo no
+    cuenta checkboxes a mano."""
     p = get_paths(context)
     lines = []
 
-    blockers = _count_tasks_in_file(p["blockers"])
     tasks = _count_tasks_in_file(p["tasks"])
-
-    agg_total = 0
-    agg_completed = 0
-
-    if blockers is not None:
-        b_total, b_completed = blockers
-        b_all = b_total > 0 and b_completed == b_total
-        lines.append(f"source=blockers_todo.md")
-        lines.append(f"total={b_total}")
-        lines.append(f"completed={b_completed}")
-        lines.append(f"all_complete={'true' if b_all else 'false'}")
-        agg_total += b_total
-        agg_completed += b_completed
 
     if tasks is not None:
         t_total, t_completed = tasks
         t_all = t_total > 0 and t_completed == t_total
-        if blockers is not None:
-            lines.append("")  # blank separator
         lines.append(f"source=tasks.md")
         lines.append(f"total={t_total}")
         lines.append(f"completed={t_completed}")
         lines.append(f"all_complete={'true' if t_all else 'false'}")
-        agg_total += t_total
-        agg_completed += t_completed
-
-    if blockers is None and tasks is None:
+    else:
         lines.append("total=0")
         lines.append("completed=0")
         lines.append("all_complete=false")
-        agg_all = False
-    else:
-        agg_all = agg_total > 0 and agg_completed == agg_total
-
-    # Aggregate only if both sources exist
-    if blockers is not None and tasks is not None:
-        lines.append("")
-        lines.append(f"aggregate_total={agg_total}")
-        lines.append(f"aggregate_completed={agg_completed}")
-        lines.append(f"aggregate_all_complete={'true' if agg_all else 'false'}")
 
     return CommandResult("\n".join(lines), EXIT_OK)
 
@@ -207,7 +178,7 @@ def cmd_validate(context):
     """Lint de los artefactos de sesión: existencia + cap de longitud.
     Determinista, no depende de que el modelo se autoevalúe.
 
-    Requiere: objective.md + snapshot.md + al menos uno de (blockers_todo.md, tasks.md).
+    Requiere: objective.md + snapshot.md + tasks.md.
     Opcionalmente valida: review-report.md, verify-report.md si existen.
     """
     p = get_paths(context)
@@ -215,8 +186,7 @@ def cmd_validate(context):
 
     # Artefactos obligatorios (siempre deben existir)
     required = ["objective.md", "snapshot.md"]
-    # Al menos uno de estos debe existir
-    task_files = ["blockers_todo.md", "tasks.md"]
+    # El archivo de tareas debe existir
     # Artefactos opcionales (se validan solo si existen)
     optional = ["review-report.md", "verify-report.md"]
 
@@ -232,18 +202,15 @@ def cmd_validate(context):
         if len(content) > MAX_ARTIFACT_CHARS:
             failures.append(f"TOO_LONG|{fname}|{len(content)}/{MAX_ARTIFACT_CHARS}")
 
-    # Al menos un archivo de tareas debe existir
-    has_task_file = False
-    for fname in task_files:
-        path = os.path.join(session_dir, fname)
-        if os.path.exists(path):
-            has_task_file = True
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            if len(content) > MAX_ARTIFACT_CHARS:
-                failures.append(f"TOO_LONG|{fname}|{len(content)}/{MAX_ARTIFACT_CHARS}")
-    if not has_task_file:
-        failures.append("MISSING|blockers_todo.md or tasks.md")
+    # Archivo de tareas debe existir
+    path = os.path.join(session_dir, "tasks.md")
+    if not os.path.exists(path):
+        failures.append("MISSING|tasks.md")
+    else:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if len(content) > MAX_ARTIFACT_CHARS:
+            failures.append(f"TOO_LONG|tasks.md|{len(content)}/{MAX_ARTIFACT_CHARS}")
 
     # Artefactos opcionales — solo validar tamaño si existen
     for fname in optional:
@@ -309,10 +276,10 @@ def cmd_next_task(context, agent_id=None):
     if not m:
         return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
 
-    # Buscar en tasks.md primero, luego blockers_todo.md
+    # Buscar en tasks.md
     all_tasks = []
-    for filepath in [p["tasks"], p["blockers"]]:
-        all_tasks.extend(_parse_task_lines(filepath))
+    filepath = p["tasks"]
+    all_tasks.extend(_parse_task_lines(filepath))
 
     claimed = m.get("task_claims", {})
 
@@ -373,8 +340,8 @@ def cmd_status(context):
 
     # Next pending task
     all_tasks = []
-    for filepath in [p["tasks"], p["blockers"]]:
-        all_tasks.extend(_parse_task_lines(filepath))
+    filepath = p["tasks"]
+    all_tasks.extend(_parse_task_lines(filepath))
     claimed = m.get("task_claims", {})
     next_task = None
     for task_id, description, status in all_tasks:
@@ -420,7 +387,7 @@ def cmd_doctor(context):
 
     # 2. Check required artifacts
     required = ["objective.md", "snapshot.md"]
-    task_files = ["blockers_todo.md", "tasks.md"]
+    task_files = ["tasks.md"]
     for fname in required:
         path = os.path.join(p["base"], fname)
         if not os.path.exists(path):
@@ -449,7 +416,7 @@ def cmd_doctor(context):
             else:
                 findings.append(f"OK: {fname} exists ({len(content)} chars)")
     if not has_task_file:
-        findings.append("ERROR: No task file found (need blockers_todo.md or tasks.md)")
+        findings.append("ERROR: No task file found (need tasks.md)")
 
     # 3. Check for non-ASCII in artifacts (language boundary hint)
     # High ratio of non-ASCII chars suggests wrong language

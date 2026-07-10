@@ -24,7 +24,6 @@ def get_paths(context):
     return {
         "base": base,
         "manifest": os.path.join(base, "manifest.json"),
-        "blockers": os.path.join(base, "blockers_todo.md"),
         "tasks": os.path.join(base, "tasks.md"),
         "lock": os.path.join(base, ".lock"),
         "write_lock": os.path.join(base, ".write.lock"),

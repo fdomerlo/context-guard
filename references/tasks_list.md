@@ -9,7 +9,7 @@ Skill responsable del **DESGLOSE EN TAREAS**. Toma documentos de referencia (`re
 - Durante el **cold boot**, si `reference_docs` en el manifest contiene documentos de referencia (SPECs, ADRs, design docs).
 - Manualmente, cuando el usuario pide generar o regenerar la lista de tareas.
 
-Si no hay `reference_docs`, el agente usa `blockers_todo.md` como fallback (flujo original de context-guard).
+Si no hay `reference_docs`, el agente crea `tasks.md` directamente.
 
 ## Qué Hacer
 

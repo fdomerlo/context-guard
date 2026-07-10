@@ -85,28 +85,6 @@ class TestArchiveSuccess(unittest.TestCase):
             self.assertEqual(len(remaining), 0,
                              f"Session dir should be clean, found: {remaining}")
 
-    def test_archive_with_blockers_all_complete(self):
-        """Archive succeeds when using blockers_todo.md instead of tasks.md."""
-        p = get_paths("ctx-test")
-        os.makedirs(p["base"], exist_ok=True)
-
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
-            "lock": {"held": False},
-            "reference_docs": [],
-            "files_in_scope": [],
-        })
-
-        with open(os.path.join(p["base"], "objective.md"), "w") as f:
-            f.write("# Objective\nArchive test.")
-        with open(os.path.join(p["base"], "snapshot.md"), "w") as f:
-            f.write("# Snapshot\nTest snapshot.")
-        with open(p["blockers"], "w") as f:
-            f.write("- [x] Blocker 1\n- [x] Blocker 2\n")
-
-        result = cmd_archive("ctx-test")
-        self.assertEqual(result.exit_code, EXIT_OK)
-        self.assertIn("SUCCESS|ARCHIVED", result.message)
 
 
 class TestArchiveBlocked(unittest.TestCase):
@@ -162,26 +140,6 @@ class TestArchiveBlocked(unittest.TestCase):
         self.assertEqual(result.exit_code, EXIT_VALIDATION)
         self.assertIn("FAIL|ARCHIVE_BLOCKED", result.message)
 
-    def test_blocked_by_incomplete_blockers(self):
-        """Archive fails when blockers are incomplete."""
-        p = get_paths("ctx-test")
-        os.makedirs(p["base"], exist_ok=True)
-
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
-            "lock": {"held": False},
-        })
-
-        with open(os.path.join(p["base"], "objective.md"), "w") as f:
-            f.write("# Objective")
-        with open(os.path.join(p["base"], "snapshot.md"), "w") as f:
-            f.write("# Snapshot")
-        with open(p["blockers"], "w") as f:
-            f.write("- [x] Done\n- [ ] Not done\n")
-
-        result = cmd_archive("ctx-test")
-        self.assertEqual(result.exit_code, EXIT_VALIDATION)
-        self.assertIn("FAIL|ARCHIVE_BLOCKED", result.message)
 
 
 class TestArchiveValidationFailure(unittest.TestCase):
