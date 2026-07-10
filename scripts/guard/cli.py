@@ -20,6 +20,7 @@ from guard.commands import (
     cmd_status,
     cmd_doctor,
     cmd_archive,
+    cmd_load_skill,
 )
 from guard.errors import GuardError
 
@@ -66,6 +67,11 @@ def parse_args(argv=None):
 
     p_validate = subparsers.add_parser("validate")
     p_validate.add_argument("--context", required=True)
+    p_validate.add_argument("--max-length", type=int, default=None,
+                            help="Override max artifact size")
+
+    p_load_skill = subparsers.add_parser("load-skill")
+    p_load_skill.add_argument("--skill", required=True, help="Skill name (e.g. review)")
 
     p_next = subparsers.add_parser("next-task")
     p_next.add_argument("--context", required=True)
@@ -102,11 +108,12 @@ def dispatch(args):
             args.context, args.task_id, args.agent_id, args.force,
         ),
         "check-completion": lambda: cmd_check_completion(args.context),
-        "validate": lambda: cmd_validate(args.context),
-        "next-task": lambda: cmd_next_task(args.context, args.agent_id),
+        "validate": lambda: cmd_validate(args.context, getattr(args, "max_length", None)),
+        "next-task": lambda: cmd_next_task(args.context, getattr(args, "agent_id", None)),
         "status": lambda: cmd_status(args.context),
         "doctor": lambda: cmd_doctor(args.context),
         "archive": lambda: cmd_archive(args.context),
+        "load-skill": lambda: cmd_load_skill(args.skill),
     }
     return handlers[args.command]()
 

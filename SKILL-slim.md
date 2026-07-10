@@ -44,7 +44,9 @@ Get the next available task:
 ## CLOSURE
 
 1. Run: `python3 ~/.agents/skills/context-guard/scripts/guard.py check-completion --context {context}`
-2. If `all_complete=true` → run: `python3 ~/.agents/skills/context-guard/scripts/guard.py archive --context {context}`
+2. If `all_complete=true`:
+   a. Run: `python3 ~/.agents/skills/context-guard/scripts/guard.py load-skill --skill review` and follow its instructions to audit your work.
+   b. Run: `python3 ~/.agents/skills/context-guard/scripts/guard.py archive --context {context}`
 3. If tasks remain incomplete → continue EXECUTION
 
 ## RULES

@@ -174,7 +174,7 @@ def cmd_check_completion(context):
     return CommandResult("\n".join(lines), EXIT_OK)
 
 
-def cmd_validate(context):
+def cmd_validate(context, max_length=None):
     """Lint de los artefactos de sesión: existencia + cap de longitud.
     Determinista, no depende de que el modelo se autoevalúe.
 
@@ -184,8 +184,14 @@ def cmd_validate(context):
     p = get_paths(context)
     session_dir = p["base"]
 
+    if max_length is None:
+        from guard.paths import MAX_ARTIFACT_CHARS
+        max_length = MAX_ARTIFACT_CHARS
+
     # Artefactos obligatorios (siempre deben existir)
     required = ["objective.md", "snapshot.md"]
+    # El archivo de tareas debe existir
+    task_files = ["tasks.md"]
     # El archivo de tareas debe existir
     # Artefactos opcionales (se validan solo si existen)
     optional = ["review-report.md", "verify-report.md"]
@@ -199,8 +205,8 @@ def cmd_validate(context):
             continue
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
-        if len(content) > MAX_ARTIFACT_CHARS:
-            failures.append(f"TOO_LONG|{fname}|{len(content)}/{MAX_ARTIFACT_CHARS}")
+        if len(content) > max_length:
+            failures.append(f"TOO_LONG|{fname}|{len(content)}/{max_length}")
 
     # Archivo de tareas debe existir
     path = os.path.join(session_dir, "tasks.md")
@@ -209,8 +215,8 @@ def cmd_validate(context):
     else:
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
-        if len(content) > MAX_ARTIFACT_CHARS:
-            failures.append(f"TOO_LONG|tasks.md|{len(content)}/{MAX_ARTIFACT_CHARS}")
+        if len(content) > max_length:
+            failures.append(f"TOO_LONG|tasks.md|{len(content)}/{max_length}")
 
     # Artefactos opcionales — solo validar tamaño si existen
     for fname in optional:
@@ -218,8 +224,22 @@ def cmd_validate(context):
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
-            if len(content) > MAX_ARTIFACT_CHARS:
-                failures.append(f"TOO_LONG|{fname}|{len(content)}/{MAX_ARTIFACT_CHARS}")
+            if len(content) > max_length:
+                failures.append(f"TOO_LONG|{fname}|{len(content)}/{max_length}")
+
+    # Validacion estricta de idioma
+    for fname in required + task_files + optional:
+        path = os.path.join(session_dir, fname)
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if not content.strip():
+            continue
+        spanish_indicators = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
+        spanish_count = sum(content.lower().count(c) for c in spanish_indicators)
+        if spanish_count > 5:
+            failures.append(f"LANGUAGE_BOUNDARY|{fname}|Spanish text detected. Artifacts must be in English.")
 
     if failures:
         raise ValidationError(failures)
@@ -418,23 +438,7 @@ def cmd_doctor(context):
     if not has_task_file:
         findings.append("ERROR: No task file found (need tasks.md)")
 
-    # 3. Check for non-ASCII in artifacts (language boundary hint)
-    # High ratio of non-ASCII chars suggests wrong language
-    for fname in required + task_files:
-        path = os.path.join(p["base"], fname)
-        if not os.path.exists(path):
-            continue
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        if not content.strip():
-            continue
-        # Check for common Spanish characters in content that should be English
-        spanish_indicators = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
-        spanish_count = sum(content.lower().count(c) for c in spanish_indicators)
-        if spanish_count > 5:
-            findings.append(
-                f"WARN: {fname} may contain Spanish text "
-                f"({spanish_count} Spanish-specific chars found, expected English)")
+    # 3. Check for non-ASCII in artifacts (removed from doctor, moved to validate)
 
     # 4. Check stale task claims
     claims = m.get("task_claims", {})
@@ -477,8 +481,26 @@ def cmd_doctor(context):
                 findings.append("WARN: Session lock has unparseable timestamp")
     else:
         findings.append("OK: Session lock is FREE")
-
     return CommandResult("\n".join(findings), EXIT_OK)
+
+
+def cmd_load_skill(skill):
+    """Carga y retorna el contenido de una sub-habilidad bajo demanda."""
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    ref_dir = os.path.join(this_dir, "..", "..", "references")
+    
+    if ".." in skill or "/" in skill or "\\" in skill:
+        return CommandResult(f"FAIL|INVALID_SKILL_NAME|{skill}", EXIT_GENERIC)
+        
+    skill_path = os.path.join(ref_dir, f"{skill}.md")
+    if not os.path.exists(skill_path):
+        return CommandResult(f"FAIL|SKILL_NOT_FOUND|{skill}", EXIT_GENERIC)
+        
+    with open(skill_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        
+    return CommandResult(content, EXIT_OK)
+
 
 
 # ---------------------------------------------------------------------------

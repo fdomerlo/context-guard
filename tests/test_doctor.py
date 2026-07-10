@@ -110,40 +110,6 @@ class TestDoctorMissingArtifacts(unittest.TestCase):
         self.assertIn("ERROR: No task file found", result.message)
 
 
-class TestDoctorLanguageDetection(unittest.TestCase):
-    """Tests for doctor detecting language boundary violations."""
-
-    def setUp(self):
-        self._orig_cwd = os.getcwd()
-        self._tmpdir = tempfile.mkdtemp(prefix="guard_test_doctor_")
-        os.chdir(self._tmpdir)
-
-    def tearDown(self):
-        os.chdir(self._orig_cwd)
-        import shutil
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
-
-    def test_spanish_in_artifacts_warns(self):
-        """Doctor warns when artifacts contain Spanish text."""
-        p = get_paths("ctx-test")
-        os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
-            "lock": {"held": False},
-        })
-        # Write objective in Spanish (should be English)
-        with open(os.path.join(p["base"], "objective.md"), "w") as f:
-            f.write("# Objetivo\n"
-                    "Implementar la autenticación básica con módulos de función "
-                    "específica. La configuración será dinámica según el período "
-                    "de ejecución activa.\n")
-        with open(os.path.join(p["base"], "snapshot.md"), "w") as f:
-            f.write("# Snapshot\nCurrent state.\n")
-        with open(p["tasks"], "w") as f:
-            f.write("- [ ] Task\n")
-
-        result = cmd_doctor("ctx-test")
-        self.assertIn("WARN: objective.md may contain Spanish text", result.message)
 
 
 class TestDoctorStaleClaims(unittest.TestCase):
