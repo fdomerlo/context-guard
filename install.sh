@@ -60,6 +60,7 @@ install_core() {
 
     cp "$GUARD_SHIM" "$SCRIPTS_DEST/"
     cp -r "$GUARD_PKG" "$SCRIPTS_DEST/"
+    find "$SCRIPTS_DEST" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
     chmod +x "$SCRIPTS_DEST/guard.py"
 
     ok "Core y Middleware instalados en $SKILL_DEST"
