@@ -6,6 +6,22 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
 
 ---
 
+## [1.2.0] - 2026-07-28
+
+### 🔒 Git Hard Gate (Pre-Commit Hook)
+
+- Implementado un hook de pre-commit en Git (`.githooks/pre-commit`) que rechaza commits si se modifican más de 2 archivos sin una transacción de `context-guard` activa.
+- Evita cambios grandes al repositorio que esquiven el protocolo `PLAN → EXECUTE → VERIFY`.
+- Soporta bypass de emergencia usando `CONTEXT_GUARD_BYPASS=1` con registro automático en `.context-guard/bypass.log`.
+
+### 📦 Corrección de Namespace de Paquete
+
+- Se renombró el directorio fuente de `scripts/` a `context_guard/` para evitar colisiones globales en Python, estandarizando el módulo con el nombre de la herramienta.
+- Se actualizaron las importaciones internas para usar referencias relativas (`from .X import Y`) dentro del submódulo `guard`, desacoplándolo del nombre del paquete raíz.
+- Se actualizó el entrypoint en `pyproject.toml` para reflejar la nueva estructura: `context_guard.mcp_server:main`.
+
+---
+
 ## [1.1.0] - 2026-07-28
 
 ### 🏗️ Scaffolding Automático de Artefactos

@@ -9,9 +9,9 @@ import os
 import time
 from datetime import datetime
 
-from guard.paths import get_paths, generate_agent_id
-from guard.manifest import load_manifest, save_manifest, create_initial_manifest
-from guard.errors import (
+from .paths import get_paths, generate_agent_id
+from .manifest import load_manifest, save_manifest, create_initial_manifest
+from .errors import (
     CommandResult,
     EXIT_OK,
     EXIT_LOCK_HELD,

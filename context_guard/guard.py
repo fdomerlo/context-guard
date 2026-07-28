@@ -9,8 +9,6 @@ Delega todo al package guard/.
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from guard.cli import main
+from context_guard.guard.cli import main
 
 main()

@@ -6,10 +6,10 @@ import sys
 import tempfile
 import unittest
 
-# Allow importing the guard package from scripts/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Allow importing the context_guard package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.cli import _to_json
+from context_guard.guard.cli import _to_json
 
 
 class TestToJson(unittest.TestCase):

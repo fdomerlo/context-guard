@@ -6,11 +6,11 @@ import tempfile
 import unittest
 import shutil
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.manifest import create_initial_manifest, load_manifest, save_manifest
-from guard.transaction import cmd_begin, cmd_commit, cmd_rollback
-from guard.errors import (
+from context_guard.guard.manifest import create_initial_manifest, load_manifest, save_manifest
+from context_guard.guard.transaction import cmd_begin, cmd_commit, cmd_rollback
+from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_VALIDATION,
     EXIT_BAD_TRANSITION,

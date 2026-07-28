@@ -5,11 +5,11 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.commands import cmd_validate
-from guard.errors import EXIT_OK, ValidationError
-from guard.paths import get_paths
+from context_guard.guard.commands import cmd_validate
+from context_guard.guard.errors import EXIT_OK, ValidationError
+from context_guard.guard.paths import get_paths
 
 class TestCmdValidate(unittest.TestCase):
     def setUp(self):

@@ -6,11 +6,11 @@ import sys
 import tempfile
 import unittest
 
-# Allow importing the guard package from scripts/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Allow importing the context_guard package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.manifest import load_manifest, save_manifest
-from guard.errors import ManifestCorruptError
+from context_guard.guard.manifest import load_manifest, save_manifest
+from context_guard.guard.errors import ManifestCorruptError
 
 
 class TestLoadManifest(unittest.TestCase):
@@ -34,7 +34,7 @@ class TestLoadManifest(unittest.TestCase):
 
     def test_valid_json_loads(self):
         """load_manifest parses a well-formed manifest.json correctly."""
-        from guard.paths import get_paths
+        from context_guard.guard.paths import get_paths
         p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
         data = {"context_name": self.context, "lock": {"held": True}}
@@ -46,7 +46,7 @@ class TestLoadManifest(unittest.TestCase):
 
     def test_corrupt_json_raises_manifest_corrupt(self):
         """load_manifest raises ManifestCorruptError on invalid JSON."""
-        from guard.paths import get_paths
+        from context_guard.guard.paths import get_paths
         p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
         with open(p["manifest"], "w") as f:
@@ -57,7 +57,7 @@ class TestLoadManifest(unittest.TestCase):
 
     def test_empty_file_raises_manifest_corrupt(self):
         """An empty file is invalid JSON and should raise ManifestCorruptError."""
-        from guard.paths import get_paths
+        from context_guard.guard.paths import get_paths
         p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
         with open(p["manifest"], "w") as f:
@@ -83,7 +83,7 @@ class TestSaveManifest(unittest.TestCase):
 
     def test_creates_directories_and_writes(self):
         """save_manifest creates parent dirs and writes the manifest."""
-        from guard.paths import get_paths
+        from context_guard.guard.paths import get_paths
         data = {"context_name": self.context, "status": "ok"}
         save_manifest(self.context, data)
 
@@ -95,7 +95,7 @@ class TestSaveManifest(unittest.TestCase):
 
     def test_atomic_write_via_tmp_rename(self):
         """save_manifest uses tmp+rename — no .tmp file should remain."""
-        from guard.paths import get_paths
+        from context_guard.guard.paths import get_paths
         data = {"key": "value"}
         save_manifest(self.context, data)
 

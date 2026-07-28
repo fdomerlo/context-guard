@@ -8,11 +8,11 @@ import os
 import shutil
 from datetime import datetime
 
-from guard.paths import get_paths, generate_agent_id, TASK_LINE_RE, MAX_ARTIFACT_CHARS
-from guard.manifest import load_manifest, save_manifest
-from guard.locking import with_write_lock, acquire
-from guard.transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint
-from guard.errors import (
+from .paths import get_paths, generate_agent_id, TASK_LINE_RE, MAX_ARTIFACT_CHARS
+from .manifest import load_manifest, save_manifest
+from .locking import with_write_lock, acquire
+from .transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint
+from .errors import (
     CommandResult,
     EXIT_OK,
     EXIT_LOCK_HELD,
@@ -186,7 +186,7 @@ def cmd_validate(context, max_length=None):
     session_dir = p["base"]
 
     if max_length is None:
-        from guard.paths import MAX_ARTIFACT_CHARS
+        from .paths import MAX_ARTIFACT_CHARS
         max_length = MAX_ARTIFACT_CHARS
 
     # Artefactos obligatorios (siempre deben existir)

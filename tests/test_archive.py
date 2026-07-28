@@ -5,13 +5,13 @@ import sys
 import tempfile
 import unittest
 
-# Allow importing the guard package from scripts/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Allow importing the context_guard package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.commands import cmd_archive, cmd_check_completion
-from guard.manifest import save_manifest
-from guard.paths import get_paths, MAX_ARTIFACT_CHARS
-from guard.errors import EXIT_OK, EXIT_VALIDATION, ValidationError
+from context_guard.guard.commands import cmd_archive, cmd_check_completion
+from context_guard.guard.manifest import save_manifest
+from context_guard.guard.paths import get_paths, MAX_ARTIFACT_CHARS
+from context_guard.guard.errors import EXIT_OK, EXIT_VALIDATION, ValidationError
 
 
 class TestArchiveSuccess(unittest.TestCase):

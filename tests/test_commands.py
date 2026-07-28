@@ -6,19 +6,19 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 
-# Allow importing the guard package from scripts/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Allow importing the context_guard package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.commands import (
+from context_guard.guard.commands import (
     cmd_check_lock,
     cmd_claim,
     cmd_release,
     cmd_claim_task,
     cmd_release_task,
 )
-from guard.manifest import save_manifest, load_manifest
-from guard.paths import get_paths
-from guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_GENERIC
+from context_guard.guard.manifest import save_manifest, load_manifest
+from context_guard.guard.paths import get_paths
+from context_guard.guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_GENERIC
 
 
 class TestCmdCheckLock(unittest.TestCase):

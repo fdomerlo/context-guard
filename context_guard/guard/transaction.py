@@ -7,10 +7,10 @@ Follows the 3-state pipeline model: PLAN -> EXECUTE -> VERIFY -> ARCHIVE.
 from datetime import datetime
 import os
 
-from guard.paths import get_paths
-from guard.manifest import load_manifest, save_manifest, create_initial_manifest
-from guard.locking import with_write_lock
-from guard.errors import (
+from .paths import get_paths
+from .manifest import load_manifest, save_manifest, create_initial_manifest
+from .locking import with_write_lock
+from .errors import (
     CommandResult,
     EXIT_OK,
     EXIT_LOCK_HELD,

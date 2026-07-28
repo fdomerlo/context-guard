@@ -3,8 +3,8 @@
 import json
 import os
 
-from guard.paths import get_paths
-from guard.errors import ManifestCorruptError
+from .paths import get_paths
+from .errors import ManifestCorruptError
 
 
 DEFAULT_PIPELINE = ["PLAN", "EXECUTE", "VERIFY"]

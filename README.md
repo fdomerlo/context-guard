@@ -125,6 +125,43 @@ Para cualquier tarea que involucre refactorizaciones, cambios de arquitectura o 
 REGLA CLAVE: El parámetro `context` debe ser SIEMPRE la ruta absoluta al directorio raíz del proyecto actual (ej. `/home/usuario/workspace/mi-proyecto`).
 ```
 
+## 🔒 Git Hard Gate (Pre-Commit Hook)
+
+El proyecto incluye un **hook de pre-commit versionado** en `.githooks/` que actúa como un "gating duro" a nivel de sistema. Bloquea automáticamente los commits que modifican más de **N archivos** (por defecto 2) si no hay evidencia de que el protocolo `PLAN → EXECUTE → VERIFY` fue iniciado.
+
+### Activación
+
+```bash
+# Configura Git para usar el directorio de hooks versionado
+git config core.hooksPath .githooks
+```
+
+### Comportamiento
+
+| Condición | Resultado |
+|---|---|
+| ≤ 2 archivos modificados | ✅ Commit permitido (cambio trivial) |
+| > 2 archivos + transacción `context-guard` activa | ✅ Commit permitido |
+| > 2 archivos **sin** transacción | ❌ **Commit rechazado** |
+
+### Configuración
+
+| Variable de Entorno | Descripción | Default |
+|---|---|---|
+| `CONTEXT_GUARD_FILE_THRESHOLD` | Número máximo de archivos permitidos sin transacción | `2` |
+| `CONTEXT_GUARD_BYPASS` | Poner a `1` para bypass de emergencia | — |
+| `CONTEXT_GUARD_BYPASS_REASON` | Motivo del bypass (registrado en `.context-guard/bypass.log`) | `unspecified` |
+
+### Bypass de Emergencia
+
+En situaciones excepcionales donde necesitas hacer un commit sin el protocolo:
+
+```bash
+CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='hotfix producción' git commit -m "fix: ..."
+```
+
+> ⚠️ Todos los bypasses quedan registrados en `.context-guard/bypass.log` para auditoría.
+
 ---
 
 ## 🛠️ Errores Comunes (Troubleshooting)

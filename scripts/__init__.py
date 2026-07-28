@@ -1,1 +1,0 @@
-"""context-guard scripts package."""

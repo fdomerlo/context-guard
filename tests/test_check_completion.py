@@ -5,12 +5,12 @@ import sys
 import tempfile
 import unittest
 
-# Allow importing the guard package from scripts/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Allow importing the context_guard package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.commands import cmd_check_completion
-from guard.paths import get_paths
-from guard.errors import EXIT_OK
+from context_guard.guard.commands import cmd_check_completion
+from context_guard.guard.paths import get_paths
+from context_guard.guard.errors import EXIT_OK
 
 
 class TestCheckCompletionNoFiles(unittest.TestCase):

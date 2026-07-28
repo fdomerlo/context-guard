@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from guard.commands import (
+from .commands import (
     cmd_check_lock,
     cmd_claim,
     cmd_release,
@@ -25,7 +25,7 @@ from guard.commands import (
     cmd_rollback,
     cmd_checkpoint,
 )
-from guard.errors import GuardError
+from .errors import GuardError
 
 
 def parse_args(argv=None):

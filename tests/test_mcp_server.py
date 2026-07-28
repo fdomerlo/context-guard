@@ -6,16 +6,16 @@ import tempfile
 import unittest
 import shutil
 
-# Ensure scripts/ directory is in path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Ensure context_guard package is in path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from mcp_server import (
+from context_guard.mcp_server import (
     begin_transaction,
     commit_transaction,
     rollback_transaction,
     save_checkpoint,
 )
-from guard.manifest import load_manifest
+from context_guard.guard.manifest import load_manifest
 
 
 class TestMCPServer(unittest.TestCase):

@@ -7,13 +7,13 @@ import tempfile
 import time
 import unittest
 
-# Allow importing the guard package from scripts/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+# Allow importing the context_guard package
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.locking import with_write_lock, try_create_lockfile, acquire, _is_write_lock_stale
-from guard.manifest import save_manifest, load_manifest
-from guard.paths import get_paths
-from guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_LOCK_CONTENDED
+from context_guard.guard.locking import with_write_lock, try_create_lockfile, acquire, _is_write_lock_stale
+from context_guard.guard.manifest import save_manifest, load_manifest
+from context_guard.guard.paths import get_paths
+from context_guard.guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_LOCK_CONTENDED
 
 
 class TestWithWriteLock(unittest.TestCase):

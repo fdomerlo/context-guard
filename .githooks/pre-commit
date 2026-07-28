@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Pre-commit gate para context-guard.
+
+Bloquea commits que tocan más de N archivos si no hay evidencia de que
+el protocolo PLAN->EXECUTE->VERIFY fue iniciado para este contexto.
+"""
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime
+
+FILE_THRESHOLD = int(os.environ.get("CONTEXT_GUARD_FILE_THRESHOLD", "2"))
+BYPASS_LOG = ".context-guard/bypass.log"
+
+
+def repo_root():
+    return subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], text=True
+    ).strip()
+
+
+def staged_files():
+    out = subprocess.check_output(
+        ["git", "diff", "--cached", "--name-only"], text=True
+    )
+    return [f for f in out.splitlines() if f.strip()]
+
+
+def load_manifest(root):
+    path = os.path.join(root, ".context-guard", "manifest.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return None
+
+
+def protocol_engaged(manifest):
+    if manifest is None:
+        return False
+    completed = manifest.get("completed_phases", [])
+    txn = manifest.get("transaction", {})
+    return bool(completed) or txn.get("txn_status") == "in_progress"
+
+
+def log_bypass(root, files, reason):
+    path = os.path.join(root, ".context-guard")
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, "bypass.log"), "a") as f:
+        f.write(f"{datetime.now().isoformat()}|{reason}|files={len(files)}|{','.join(files)}\n")
+
+
+def main():
+    root = repo_root()
+    files = staged_files()
+
+    if len(files) <= FILE_THRESHOLD:
+        sys.exit(0)
+
+    manifest = load_manifest(root)
+    if protocol_engaged(manifest):
+        sys.exit(0)
+
+    if os.environ.get("CONTEXT_GUARD_BYPASS") == "1":
+        reason = os.environ.get("CONTEXT_GUARD_BYPASS_REASON", "unspecified")
+        log_bypass(root, files, reason)
+        print(f"[context-guard] BYPASS registrado en {BYPASS_LOG}", file=sys.stderr)
+        sys.exit(0)
+
+    print(
+        f"[context-guard] COMMIT RECHAZADO: {len(files)} archivos modificados "
+        f"(umbral={FILE_THRESHOLD}) sin transacción iniciada.\n"
+        f"  -> Utiliza el servidor MCP 'context-guard' para iniciar la fase PLAN.\n"
+        f"  -> Excepción (Bypass): CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+if __name__ == "__main__":
+    main()

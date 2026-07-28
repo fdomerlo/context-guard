@@ -25,17 +25,14 @@ A typical lifecycle:
 import os
 import sys
 
-# Ensure `guard` package can be imported from scripts/
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 from mcp.server.fastmcp import FastMCP
-from guard.transaction import (
+from context_guard.guard.transaction import (
     cmd_begin,
     cmd_commit,
     cmd_rollback,
     cmd_checkpoint,
 )
-from guard.errors import GuardError, EXIT_GENERIC
+from context_guard.guard.errors import GuardError, EXIT_GENERIC
 
 mcp = FastMCP("context-guard")
 

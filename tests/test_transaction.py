@@ -7,17 +7,17 @@ import unittest
 import shutil
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from guard.transaction import (
+from context_guard.guard.transaction import (
     cmd_begin,
     cmd_commit,
     cmd_rollback,
     cmd_checkpoint,
     MAX_SUMMARY_CHARS,
 )
-from guard.manifest import load_manifest, save_manifest
-from guard.errors import (
+from context_guard.guard.manifest import load_manifest, save_manifest
+from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_LOCK_HELD,
     EXIT_GENERIC,

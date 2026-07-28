@@ -11,7 +11,7 @@ requires-python = ">=3.9"
 dependencies = ["mcp>=1.0.0"]
 
 [project.scripts]
-context-guard = "scripts.mcp_server:main"
+context-guard = "context_guard.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["scripts"]
+packages = ["context_guard"]
