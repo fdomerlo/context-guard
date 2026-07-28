@@ -40,6 +40,12 @@ class TestMCPServer(unittest.TestCase):
         m_chk = load_manifest(self.context)
         self.assertEqual(m_chk["session"]["session_summary"], "MCP Checkpoint")
 
+        base_dir = os.path.join(self.context, ".context-guard")
+        with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
+            f.write("Objective defined")
+        with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("- [x] Task 1")
+
         res_commit = commit_transaction(self.context, "EXECUTE")
         self.assertTrue(res_commit.startswith("[0] SUCCESS|COMMIT"))
 

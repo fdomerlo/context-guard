@@ -45,6 +45,12 @@ class TestThreeStatePhases(unittest.TestCase):
         res_b1 = cmd_begin(self.context, "PLAN")
         self.assertEqual(res_b1.exit_code, EXIT_OK)
 
+        base_dir = os.path.join(self.context, ".context-guard")
+        with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
+            f.write("Objective defined")
+        with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("- [x] Task 1")
+
         res_c1 = cmd_commit(self.context, "EXECUTE")
         self.assertEqual(res_c1.exit_code, EXIT_OK)
 
@@ -70,6 +76,11 @@ class TestThreeStatePhases(unittest.TestCase):
         # 3. VERIFY -> ARCHIVE
         res_b3 = cmd_begin(self.context, "VERIFY")
         self.assertEqual(res_b3.exit_code, EXIT_OK)
+
+        with open(os.path.join(base_dir, "review-report.md"), "w", encoding="utf-8") as f:
+            f.write("Review complete")
+        with open(os.path.join(base_dir, "verify-report.md"), "w", encoding="utf-8") as f:
+            f.write("Verification complete")
 
         res_c3 = cmd_commit(self.context, "ARCHIVE")
         self.assertEqual(res_c3.exit_code, EXIT_OK)

@@ -6,6 +6,36 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
 
 ---
 
+## [1.1.0] - 2026-07-28
+
+### 🏗️ Scaffolding Automático de Artefactos
+
+- **`_scaffold_artifacts(context_path)`** en `transaction.py`:
+  - Al iniciar una transacción `PLAN` con `begin_transaction`, se auto-generan en `.context-guard/` cinco plantillas Markdown si no existen previamente: `objective.md`, `snapshot.md`, `tasks.md`, `review-report.md` y `verify-report.md`.
+  - Cada plantilla se inicializa con el marcador `[PENDING]` para guiar al LLM sobre qué campos deben completarse antes de avanzar de fase.
+
+### 🚧 Compuertas Duras (Hard Gates) en `cmd_commit`
+
+- Validaciones estrictas en Python antes de autorizar transiciones de fase (sin dependencia de system prompt):
+  - **`PLAN` → `EXECUTE`**: Verifica que `objective.md` y `tasks.md` existan y no contengan `[PENDING]`. En caso contrario, retorna `EXIT_VALIDATION` con mensaje descriptivo.
+  - **`VERIFY` → `ARCHIVE`**: Verifica que `review-report.md` y `verify-report.md` existan y no contengan `[PENDING]`. En caso contrario, retorna `EXIT_VALIDATION` con mensaje descriptivo.
+
+### 📜 Docstrings MCP actualizados (`mcp_server.py`)
+
+- `begin_transaction`: Documenta el auto-scaffolding de los 5 archivos `.md` en la fase `PLAN`.
+- `commit_transaction`: Documenta las reglas de validación estricta de Hard Gates por archivo y por fase, exponiendo las restricciones al LLM vía schema de herramientas.
+
+### ✅ Mejoras en la Suite de Pruebas
+
+- Nuevos casos de prueba en `test_transaction.py`:
+  - `test_begin_valid_phase`: verifica la creación de los 5 artefactos scaffold con contenido `[PENDING]`.
+  - `test_commit_hard_gate_plan_to_execute_pending`: valida el rechazo cuando los archivos de `PLAN` contienen marcadores.
+  - `test_commit_hard_gate_verify_to_archive_pending`: valida el rechazo cuando los archivos de `VERIFY` contienen marcadores.
+- Actualización de `test_phases.py` y `test_mcp_server.py` para preparar artefactos válidos antes de cada `commit_transaction`.
+- Suite completa: **111 tests, 0 fallos**.
+
+---
+
 ## [1.0.0] - 2026-07-28
 
 ### 🚀 Novedades y Características Principales

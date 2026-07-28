@@ -38,7 +38,7 @@ class TestTransaction(unittest.TestCase):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_begin_valid_phase(self):
-        """begin successfully starts a transaction for PLAN phase."""
+        """begin successfully starts a transaction for PLAN phase and scaffolds artifacts."""
         res = cmd_begin(self.context, "PLAN")
         self.assertEqual(res.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|BEGIN", res.message)
@@ -47,6 +47,13 @@ class TestTransaction(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(m["transaction"]["txn_status"], "in_progress")
         self.assertEqual(m["transaction"]["txn_phase"], "PLAN")
+
+        base_dir = os.path.join(self.context, ".context-guard")
+        for fname in ["objective.md", "snapshot.md", "tasks.md", "review-report.md", "verify-report.md"]:
+            fpath = os.path.join(base_dir, fname)
+            self.assertTrue(os.path.exists(fpath))
+            with open(fpath, "r", encoding="utf-8") as f:
+                self.assertIn("[PENDING]", f.read())
 
     def test_begin_invalid_phase(self):
         """begin returns EXIT_VALIDATION for an unknown phase."""
@@ -76,6 +83,14 @@ class TestTransaction(unittest.TestCase):
     def test_commit_valid_transition(self):
         """commit advances phases correctly according to the DAG."""
         cmd_begin(self.context, "PLAN")
+
+        # Fill objective.md and tasks.md so hard gate passes
+        base_dir = os.path.join(self.context, ".context-guard")
+        with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
+            f.write("Objective defined")
+        with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("- [x] Task 1")
+
         res = cmd_commit(self.context, "EXECUTE")
         self.assertEqual(res.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|COMMIT", res.message)
@@ -86,6 +101,31 @@ class TestTransaction(unittest.TestCase):
         self.assertIn("PLAN", m["completed_phases"])
         self.assertEqual(m["transaction"]["txn_status"], "idle")
         self.assertIn("completed_phase=PLAN", m["session"]["session_summary"])
+
+    def test_commit_hard_gate_plan_to_execute_pending(self):
+        """commit PLAN -> EXECUTE fails if objective.md or tasks.md contain [PENDING]."""
+        cmd_begin(self.context, "PLAN")
+        res = cmd_commit(self.context, "EXECUTE")
+        self.assertEqual(res.exit_code, EXIT_VALIDATION)
+        self.assertIn("Debe completar objective.md y tasks.md", res.message)
+
+    def test_commit_hard_gate_verify_to_archive_pending(self):
+        """commit VERIFY -> ARCHIVE fails if review-report.md or verify-report.md contain [PENDING]."""
+        cmd_begin(self.context, "PLAN")
+        base_dir = os.path.join(self.context, ".context-guard")
+        with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
+            f.write("Objective defined")
+        with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("- [x] Task 1")
+        cmd_commit(self.context, "EXECUTE")
+
+        cmd_begin(self.context, "EXECUTE")
+        cmd_commit(self.context, "VERIFY")
+
+        cmd_begin(self.context, "VERIFY")
+        res = cmd_commit(self.context, "ARCHIVE")
+        self.assertEqual(res.exit_code, EXIT_VALIDATION)
+        self.assertIn("Debe completar la auditoría", res.message)
 
     def test_commit_invalid_transition(self):
         """commit returns EXIT_BAD_TRANSITION on illegal phase skip."""

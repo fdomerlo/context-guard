@@ -42,6 +42,27 @@ def is_stale(started_at_iso, ttl_seconds):
         return False
 
 
+def _scaffold_artifacts(context_path):
+    """Genera plantillas por defecto en .context-guard/ para la fase PLAN si no existen."""
+    p = get_paths(context_path)
+    base_dir = p["base"]
+    os.makedirs(base_dir, exist_ok=True)
+
+    artifacts = {
+        "objective.md": "[PENDING] Define objective here",
+        "snapshot.md": "[PENDING] Define snapshot here",
+        "tasks.md": "[PENDING] Define tasks here",
+        "review-report.md": "[PENDING] Write static review here",
+        "verify-report.md": "[PENDING] Write dynamic verification here",
+    }
+
+    for filename, default_content in artifacts.items():
+        filepath = os.path.join(base_dir, filename)
+        if not os.path.exists(filepath):
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(default_content)
+
+
 def cmd_begin(context, phase, ttl=DEFAULT_TTL):
     """Inicia una transacción para la fase dada (PLAN, EXECUTE, VERIFY)."""
     if phase not in VALID_PHASES:
@@ -53,7 +74,6 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL):
         if not m:
             m = create_initial_manifest(context)
 
-
         txn = m.setdefault("transaction", {})
         status = txn.get("txn_status", "idle")
         started_at = txn.get("txn_started_at", None)
@@ -63,6 +83,9 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL):
                 f"FAIL|TXN_IN_PROGRESS|{txn.get('txn_phase')}",
                 EXIT_LOCK_HELD,
             )
+
+        if phase == "PLAN":
+            _scaffold_artifacts(context)
 
         # Snapshot de estado previo para rollback
         snapshot = {
@@ -103,6 +126,44 @@ def cmd_commit(context, next_phase):
                 f"FAIL|BAD_TRANSITION|from={phase}|to={next_phase}|expected={expected_next}",
                 EXIT_BAD_TRANSITION,
             )
+
+        # Validaciones estrictas (Hard Gates) antes de autorizar el cambio de fase
+        p = get_paths(context)
+        base_dir = p["base"]
+
+        if phase == "PLAN" and next_phase == "EXECUTE":
+            required_files = ["objective.md", "tasks.md"]
+            for fname in required_files:
+                fpath = os.path.join(base_dir, fname)
+                if not os.path.exists(fpath):
+                    return CommandResult(
+                        "FAIL|VALIDATION|Debe completar objective.md y tasks.md antes de avanzar a EXECUTE",
+                        EXIT_VALIDATION,
+                    )
+                with open(fpath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if "[PENDING]" in content:
+                    return CommandResult(
+                        "FAIL|VALIDATION|Debe completar objective.md y tasks.md antes de avanzar a EXECUTE",
+                        EXIT_VALIDATION,
+                    )
+
+        elif phase == "VERIFY" and next_phase == "ARCHIVE":
+            required_files = ["review-report.md", "verify-report.md"]
+            for fname in required_files:
+                fpath = os.path.join(base_dir, fname)
+                if not os.path.exists(fpath):
+                    return CommandResult(
+                        "FAIL|VALIDATION|Debe completar la auditoría en review-report.md y verify-report.md antes de archivar",
+                        EXIT_VALIDATION,
+                    )
+                with open(fpath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if "[PENDING]" in content:
+                    return CommandResult(
+                        "FAIL|VALIDATION|Debe completar la auditoría en review-report.md y verify-report.md antes de archivar",
+                        EXIT_VALIDATION,
+                    )
 
         # Actualizar grafo de fases
         m["current_phase"] = phase

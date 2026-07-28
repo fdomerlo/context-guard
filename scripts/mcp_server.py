@@ -61,6 +61,10 @@ def begin_transaction(context: str, phase: str) -> str:
     context; attempting to begin while another is in progress returns an error
     (unless the existing transaction has expired past its TTL).
 
+    If phase is 'PLAN', this tool automatically scaffolds 5 markdown files in
+    .context-guard/: objective.md, snapshot.md, tasks.md, review-report.md,
+    and verify-report.md with default placeholder text if they do not exist.
+
     A snapshot of the current manifest state is captured automatically so that
     rollback_transaction can restore it if the phase fails.
 
@@ -83,6 +87,12 @@ def commit_transaction(context: str, next_phase: str) -> str:
     Validates that the transition is legal according to the DAG:
         PLAN -> EXECUTE,  EXECUTE -> VERIFY,  VERIFY -> ARCHIVE.
     Skipping phases (e.g. PLAN -> VERIFY) is rejected with EXIT_BAD_TRANSITION.
+
+    Phase transitions will be rejected with EXIT_VALIDATION if required artifact
+    files contain '[PENDING]' placeholder text or are missing:
+    - PLAN -> EXECUTE requires completing objective.md and tasks.md.
+    - VERIFY -> ARCHIVE requires completing review-report.md and verify-report.md.
+
     Committing consolidates state: marks the current phase as completed, updates
     lock_phase to next_phase, and generates a deterministic auto-summary.
 
