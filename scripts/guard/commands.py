@@ -11,6 +11,7 @@ from datetime import datetime
 from guard.paths import get_paths, generate_agent_id, TASK_LINE_RE, MAX_ARTIFACT_CHARS
 from guard.manifest import load_manifest, save_manifest
 from guard.locking import with_write_lock, acquire
+from guard.transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint
 from guard.errors import (
     CommandResult,
     EXIT_OK,
@@ -484,24 +485,6 @@ def cmd_doctor(context):
     return CommandResult("\n".join(findings), EXIT_OK)
 
 
-def cmd_load_skill(skill):
-    """Carga y retorna el contenido de una sub-habilidad bajo demanda."""
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    ref_dir = os.path.join(this_dir, "..", "..", "references")
-    
-    if ".." in skill or "/" in skill or "\\" in skill:
-        return CommandResult(f"FAIL|INVALID_SKILL_NAME|{skill}", EXIT_GENERIC)
-        
-    skill_path = os.path.join(ref_dir, f"{skill}.md")
-    if not os.path.exists(skill_path):
-        return CommandResult(f"FAIL|SKILL_NOT_FOUND|{skill}", EXIT_GENERIC)
-        
-    with open(skill_path, "r", encoding="utf-8") as f:
-        content = f.read()
-        
-    return CommandResult(content, EXIT_OK)
-
-
 
 # ---------------------------------------------------------------------------
 # Archive
@@ -551,10 +534,11 @@ def cmd_archive(context):
 
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            archive_dir = os.path.join(p["archive"], f"{timestamp}_{context}")
+            ctx_name = os.path.basename(os.path.abspath(context))
+            archive_dir = os.path.join(p["archive"], f"{timestamp}_{ctx_name}")
 
-            # Copiar sesión a archive
-            shutil.copytree(p["base"], archive_dir)
+            # Copiar sesión a archive (excluyendo la propia carpeta archive si está dentro de p["base"])
+            shutil.copytree(p["base"], archive_dir, ignore=shutil.ignore_patterns("archive"))
 
             # Verificar que el archive no esté vacío
             archive_contents = os.listdir(archive_dir)
@@ -564,8 +548,15 @@ def cmd_archive(context):
                     EXIT_VALIDATION,
                 )
 
-            # Borrar la sesión original por completo
-            shutil.rmtree(p["base"])
+            # Limpiar los archivos de la sesión activa en p["base"] (preservando p["archive"])
+            for item in os.listdir(p["base"]):
+                if item == "archive":
+                    continue
+                item_path = os.path.join(p["base"], item)
+                if os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                else:
+                    os.remove(item_path)
 
             return CommandResult(
                 f"SUCCESS|ARCHIVED|{archive_dir}",

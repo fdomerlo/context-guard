@@ -7,6 +7,29 @@ from guard.paths import get_paths
 from guard.errors import ManifestCorruptError
 
 
+DEFAULT_PIPELINE = ["PLAN", "EXECUTE", "VERIFY"]
+
+
+def create_initial_manifest(context):
+    """Crea una estructura de manifest inicial con el pipeline de 3 estados."""
+    return {
+        "context_name": context,
+        "current_phase": "PLAN",
+        "lock_phase": "PLAN",
+        "completed_phases": [],
+        "pending_phases": list(DEFAULT_PIPELINE),
+        "lock": {},
+        "transaction": {
+            "txn_status": "idle",
+            "txn_phase": "None",
+            "txn_started_at": None,
+        },
+        "reference_docs": [],
+        "files_in_scope": [],
+        "task_claims": {},
+    }
+
+
 def load_manifest(context):
     """Carga el manifest del contexto dado.
 
@@ -37,3 +60,4 @@ def save_manifest(context, data):
     with open(tmp_path, "w") as f:
         json.dump(data, f, indent=2)
     os.rename(tmp_path, p["manifest"])
+

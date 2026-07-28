@@ -20,6 +20,7 @@ class TestLoadManifest(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_manifest_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -28,42 +29,42 @@ class TestLoadManifest(unittest.TestCase):
 
     def test_missing_file_returns_none(self):
         """load_manifest returns None when no manifest file exists."""
-        result = load_manifest("ctx-test")
+        result = load_manifest(self.context)
         self.assertIsNone(result)
 
     def test_valid_json_loads(self):
         """load_manifest parses a well-formed manifest.json correctly."""
         from guard.paths import get_paths
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
-        data = {"context_name": "ctx-test", "lock": {"held": True}}
+        data = {"context_name": self.context, "lock": {"held": True}}
         with open(p["manifest"], "w") as f:
             json.dump(data, f)
 
-        result = load_manifest("ctx-test")
+        result = load_manifest(self.context)
         self.assertEqual(result, data)
 
     def test_corrupt_json_raises_manifest_corrupt(self):
         """load_manifest raises ManifestCorruptError on invalid JSON."""
         from guard.paths import get_paths
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
         with open(p["manifest"], "w") as f:
             f.write("{not valid json!!!")
 
         with self.assertRaises(ManifestCorruptError):
-            load_manifest("ctx-test")
+            load_manifest(self.context)
 
     def test_empty_file_raises_manifest_corrupt(self):
         """An empty file is invalid JSON and should raise ManifestCorruptError."""
         from guard.paths import get_paths
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
         with open(p["manifest"], "w") as f:
             f.write("")
 
         with self.assertRaises(ManifestCorruptError):
-            load_manifest("ctx-test")
+            load_manifest(self.context)
 
 
 class TestSaveManifest(unittest.TestCase):
@@ -73,6 +74,7 @@ class TestSaveManifest(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_manifest_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -82,10 +84,10 @@ class TestSaveManifest(unittest.TestCase):
     def test_creates_directories_and_writes(self):
         """save_manifest creates parent dirs and writes the manifest."""
         from guard.paths import get_paths
-        data = {"context_name": "ctx-test", "status": "ok"}
-        save_manifest("ctx-test", data)
+        data = {"context_name": self.context, "status": "ok"}
+        save_manifest(self.context, data)
 
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         self.assertTrue(os.path.exists(p["manifest"]))
         with open(p["manifest"], "r") as f:
             loaded = json.load(f)
@@ -95,9 +97,9 @@ class TestSaveManifest(unittest.TestCase):
         """save_manifest uses tmp+rename — no .tmp file should remain."""
         from guard.paths import get_paths
         data = {"key": "value"}
-        save_manifest("ctx-test", data)
+        save_manifest(self.context, data)
 
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         tmp_path = p["manifest"] + ".tmp"
         self.assertFalse(os.path.exists(tmp_path),
                          "Temporary file should be removed after atomic rename")
@@ -107,22 +109,22 @@ class TestSaveManifest(unittest.TestCase):
         """save_manifest overwrites an existing manifest atomically."""
         data_v1 = {"version": 1}
         data_v2 = {"version": 2}
-        save_manifest("ctx-test", data_v1)
-        save_manifest("ctx-test", data_v2)
+        save_manifest(self.context, data_v1)
+        save_manifest(self.context, data_v2)
 
-        result = load_manifest("ctx-test")
+        result = load_manifest(self.context)
         self.assertEqual(result["version"], 2)
 
     def test_roundtrip_preserves_data(self):
         """save then load preserves all data."""
         data = {
-            "context_name": "ctx-test",
+            "context_name": self.context,
             "lock": {"held": True, "ttl_seconds": 1800},
             "reference_docs": ["a.md", "b.md"],
             "files_in_scope": [],
         }
-        save_manifest("ctx-test", data)
-        loaded = load_manifest("ctx-test")
+        save_manifest(self.context, data)
+        loaded = load_manifest(self.context)
         self.assertEqual(loaded, data)
 
 

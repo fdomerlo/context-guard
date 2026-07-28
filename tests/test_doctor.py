@@ -22,6 +22,7 @@ class TestDoctorHealthy(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_doctor_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -30,10 +31,10 @@ class TestDoctorHealthy(unittest.TestCase):
 
     def _setup_healthy_session(self):
         """Create a fully healthy session."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
             "reference_docs": [],
             "files_in_scope": [],
@@ -49,7 +50,7 @@ class TestDoctorHealthy(unittest.TestCase):
     def test_healthy_session_all_ok(self):
         """Doctor reports all OK on a healthy session."""
         self._setup_healthy_session()
-        result = cmd_doctor("ctx-test")
+        result = cmd_doctor(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("OK: manifest.json is valid", result.message)
         self.assertIn("OK: objective.md exists", result.message)
@@ -65,6 +66,7 @@ class TestDoctorMissingArtifacts(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_doctor_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -79,10 +81,10 @@ class TestDoctorMissingArtifacts(unittest.TestCase):
 
     def test_missing_objective(self):
         """Doctor reports missing objective.md."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
         with open(os.path.join(p["base"], "snapshot.md"), "w") as f:
@@ -90,15 +92,15 @@ class TestDoctorMissingArtifacts(unittest.TestCase):
         with open(p["tasks"], "w") as f:
             f.write("- [ ] Task\n")
 
-        result = cmd_doctor("ctx-test")
+        result = cmd_doctor(self.context)
         self.assertIn("ERROR: objective.md is missing", result.message)
 
     def test_missing_task_files(self):
         """Doctor reports missing task files."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
         with open(os.path.join(p["base"], "objective.md"), "w") as f:
@@ -106,7 +108,7 @@ class TestDoctorMissingArtifacts(unittest.TestCase):
         with open(os.path.join(p["base"], "snapshot.md"), "w") as f:
             f.write("# Snapshot\n")
 
-        result = cmd_doctor("ctx-test")
+        result = cmd_doctor(self.context)
         self.assertIn("ERROR: No task file found", result.message)
 
 
@@ -119,6 +121,7 @@ class TestDoctorStaleClaims(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_doctor_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -127,11 +130,11 @@ class TestDoctorStaleClaims(unittest.TestCase):
 
     def test_stale_task_claim_warns(self):
         """Doctor warns about task claims older than 30 minutes."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
         past = (datetime.now() - timedelta(seconds=3600)).isoformat()
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
             "task_claims": {
                 "1.1": {
@@ -148,16 +151,16 @@ class TestDoctorStaleClaims(unittest.TestCase):
         with open(p["tasks"], "w") as f:
             f.write("- [ ] 1.1 Task\n")
 
-        result = cmd_doctor("ctx-test")
+        result = cmd_doctor(self.context)
         self.assertIn("WARN: Task 1.1 claimed by old-agent", result.message)
         self.assertIn("possibly stale", result.message)
 
     def test_recent_claim_ok(self):
         """Doctor reports OK for recent task claims."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
             "task_claims": {
                 "1.1": {
@@ -174,7 +177,7 @@ class TestDoctorStaleClaims(unittest.TestCase):
         with open(p["tasks"], "w") as f:
             f.write("- [ ] 1.1 Task\n")
 
-        result = cmd_doctor("ctx-test")
+        result = cmd_doctor(self.context)
         self.assertIn("OK: Task 1.1 claimed by current-agent", result.message)
 
 
@@ -185,6 +188,7 @@ class TestDoctorSizeLimits(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_doctor_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -193,10 +197,10 @@ class TestDoctorSizeLimits(unittest.TestCase):
 
     def test_oversized_artifact_warns(self):
         """Doctor warns when an artifact exceeds MAX_ARTIFACT_CHARS."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
         with open(os.path.join(p["base"], "objective.md"), "w") as f:
@@ -206,7 +210,7 @@ class TestDoctorSizeLimits(unittest.TestCase):
         with open(p["tasks"], "w") as f:
             f.write("- [ ] Task\n")
 
-        result = cmd_doctor("ctx-test")
+        result = cmd_doctor(self.context)
         self.assertIn("WARN: objective.md exceeds size limit", result.message)
 
 

@@ -20,6 +20,7 @@ class TestCheckCompletionNoFiles(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_completion_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -28,7 +29,7 @@ class TestCheckCompletionNoFiles(unittest.TestCase):
 
     def test_no_files_total_zero(self):
         """No blockers or tasks files → total=0, all_complete=false."""
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("total=0", result.message)
         self.assertIn("completed=0", result.message)
@@ -44,6 +45,7 @@ class TestCheckCompletionOnlyTasks(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_completion_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -51,7 +53,7 @@ class TestCheckCompletionOnlyTasks(unittest.TestCase):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _write_tasks(self, content):
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["tasks"]), exist_ok=True)
         with open(p["tasks"], "w") as f:
             f.write(content)
@@ -64,7 +66,7 @@ class TestCheckCompletionOnlyTasks(unittest.TestCase):
             "- [x] Task two\n"
             "- [x] Task three\n"
         )
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("source=tasks.md", result.message)
         self.assertIn("total=3", result.message)
         self.assertIn("completed=3", result.message)
@@ -76,7 +78,7 @@ class TestCheckCompletionOnlyTasks(unittest.TestCase):
             "- [ ] Task A\n"
             "- [ ] Task B\n"
         )
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=2", result.message)
         self.assertIn("completed=0", result.message)
         self.assertIn("all_complete=false", result.message)
@@ -90,7 +92,7 @@ class TestCheckCompletionOnlyTasks(unittest.TestCase):
             "- [x] Actual task\n"
             "- Regular list item without checkbox\n"
         )
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=1", result.message)
         self.assertIn("completed=1", result.message)
 
@@ -104,6 +106,7 @@ class TestCheckCompletionEdgeCases(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_completion_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -111,7 +114,7 @@ class TestCheckCompletionEdgeCases(unittest.TestCase):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _write_tasks(self, content):
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["tasks"]), exist_ok=True)
         with open(p["tasks"], "w") as f:
             f.write(content)
@@ -119,20 +122,20 @@ class TestCheckCompletionEdgeCases(unittest.TestCase):
     def test_uppercase_x(self):
         """Uppercase [X] is treated as complete."""
         self._write_tasks("- [X] Task with uppercase X\n")
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("completed=1", result.message)
 
     def test_indented_checkbox(self):
         """Indented checkboxes are still counted."""
         self._write_tasks("  - [x] Indented task\n    - [ ] Nested task\n")
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=2", result.message)
         self.assertIn("completed=1", result.message)
 
     def test_checkbox_with_extra_content(self):
         """Checkbox with detailed content after the marker is parsed."""
         self._write_tasks("- [x] Complex task: with colons and (parens)\n")
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=1", result.message)
         self.assertIn("completed=1", result.message)
 
@@ -144,6 +147,7 @@ class TestCheckCompletionInProgress(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_completion_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -151,7 +155,7 @@ class TestCheckCompletionInProgress(unittest.TestCase):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _write_tasks(self, content):
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["tasks"]), exist_ok=True)
         with open(p["tasks"], "w") as f:
             f.write(content)
@@ -163,7 +167,7 @@ class TestCheckCompletionInProgress(unittest.TestCase):
             "- [/] In progress task\n"
             "- [ ] Pending task\n"
         )
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=3", result.message)
         self.assertIn("completed=1", result.message)
         self.assertIn("all_complete=false", result.message)
@@ -171,7 +175,7 @@ class TestCheckCompletionInProgress(unittest.TestCase):
     def test_all_in_progress_not_complete(self):
         """All [/] tasks → total > 0, completed = 0."""
         self._write_tasks("- [/] WIP 1\n- [/] WIP 2\n")
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=2", result.message)
         self.assertIn("completed=0", result.message)
         self.assertIn("all_complete=false", result.message)
@@ -184,7 +188,7 @@ class TestCheckCompletionInProgress(unittest.TestCase):
             "- [ ] Todo\n"
             "- [X] Also done\n"
         )
-        result = cmd_check_completion("ctx-test")
+        result = cmd_check_completion(self.context)
         self.assertIn("total=4", result.message)
         self.assertIn("completed=2", result.message)
 

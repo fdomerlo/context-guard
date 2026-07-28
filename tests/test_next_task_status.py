@@ -26,18 +26,21 @@ class TestCmdNextTask(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_next_task_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def _setup_session(self, tasks_content):
+    def _setup_session(self, tasks_content, context=None):
         """Create a session with tasks file."""
-        p = get_paths("ctx-test")
+        if context is None:
+            context = self.context
+        p = get_paths(context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(context, {
+            "context_name": context,
             "lock": {"held": False},
             "reference_docs": [],
             "files_in_scope": [],
@@ -53,7 +56,7 @@ class TestCmdNextTask(unittest.TestCase):
             "- [ ] 1.2 Pending task\n"
             "- [ ] 1.3 Another pending\n"
         )
-        result = cmd_next_task("ctx-test")
+        result = cmd_next_task(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|NEXT_TASK|1.2", result.message)
         self.assertIn("Pending task", result.message)
@@ -65,8 +68,8 @@ class TestCmdNextTask(unittest.TestCase):
             "- [ ] 1.2 Second task\n"
         )
         # Claim first task manually
-        cmd_claim_task("ctx-test", "1.1", agent_id="other-agent")
-        result = cmd_next_task("ctx-test")
+        cmd_claim_task(self.context, "1.1", agent_id="other-agent")
+        result = cmd_next_task(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|NEXT_TASK|1.2", result.message)
 
@@ -76,7 +79,7 @@ class TestCmdNextTask(unittest.TestCase):
             "- [x] 1.1 Done task\n"
             "- [x] 1.2 Also done\n"
         )
-        result = cmd_next_task("ctx-test")
+        result = cmd_next_task(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("DONE|NO_PENDING_TASKS", result.message)
 
@@ -87,7 +90,7 @@ class TestCmdNextTask(unittest.TestCase):
             "- [/] 1.2 In progress\n"
             "- [ ] 1.3 Pending\n"
         )
-        result = cmd_next_task("ctx-test")
+        result = cmd_next_task(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|NEXT_TASK|1.2", result.message)
 
@@ -103,7 +106,7 @@ class TestCmdNextTask(unittest.TestCase):
             "- [x] Done task\n"
             "- [ ] Pending task without number\n"
         )
-        result = cmd_next_task("ctx-test")
+        result = cmd_next_task(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|NEXT_TASK|2", result.message)
 
@@ -117,6 +120,7 @@ class TestCmdStatus(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_status_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -124,12 +128,14 @@ class TestCmdStatus(unittest.TestCase):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _setup_session(self, tasks_content="- [ ] Task 1\n",
-                       objective="Build the thing."):
+                       objective="Build the thing.", context=None):
         """Create a full session with objective, snapshot, and tasks."""
-        p = get_paths("ctx-test")
+        if context is None:
+            context = self.context
+        p = get_paths(context)
         os.makedirs(p["base"], exist_ok=True)
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(context, {
+            "context_name": context,
             "lock": {"held": False},
             "reference_docs": [],
             "files_in_scope": [],
@@ -145,14 +151,14 @@ class TestCmdStatus(unittest.TestCase):
     def test_status_shows_context(self):
         """status output contains the context name."""
         self._setup_session()
-        result = cmd_status("ctx-test")
+        result = cmd_status(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
-        self.assertIn("CONTEXT: ctx-test", result.message)
+        self.assertIn(f"CONTEXT: {self.context}", result.message)
 
     def test_status_shows_objective(self):
         """status output contains the objective summary."""
         self._setup_session(objective="Implement OAuth2 login flow.")
-        result = cmd_status("ctx-test")
+        result = cmd_status(self.context)
         self.assertIn("OBJECTIVE: Implement OAuth2 login flow.", result.message)
 
     def test_status_shows_progress(self):
@@ -160,7 +166,7 @@ class TestCmdStatus(unittest.TestCase):
         self._setup_session(
             "- [x] Done\n- [ ] Pending\n- [ ] Also pending\n"
         )
-        result = cmd_status("ctx-test")
+        result = cmd_status(self.context)
         self.assertIn("PROGRESS: 1/3 tasks complete", result.message)
 
     def test_status_shows_next_task(self):
@@ -168,22 +174,22 @@ class TestCmdStatus(unittest.TestCase):
         self._setup_session(
             "- [x] 1.1 Done\n- [ ] 1.2 Next thing\n"
         )
-        result = cmd_status("ctx-test")
+        result = cmd_status(self.context)
         self.assertIn("NEXT: 1.2 -", result.message)
 
     def test_status_shows_lock_free(self):
         """status shows LOCK: FREE when no lock held."""
         self._setup_session()
-        result = cmd_status("ctx-test")
+        result = cmd_status(self.context)
         self.assertIn("LOCK: FREE", result.message)
 
     def test_status_shows_lock_held(self):
         """status shows LOCK: HELD when lock is active."""
         p = self._setup_session()
-        m = load_manifest("ctx-test")
+        m = load_manifest(self.context)
         m["lock"] = {"held": True, "acquired_by": "agent-X"}
-        save_manifest("ctx-test", m)
-        result = cmd_status("ctx-test")
+        save_manifest(self.context, m)
+        result = cmd_status(self.context)
         self.assertIn("LOCK: HELD by agent-X", result.message)
 
     def test_status_no_session(self):
@@ -195,7 +201,7 @@ class TestCmdStatus(unittest.TestCase):
     def test_status_no_next_when_all_done(self):
         """status shows NEXT: (none) when all tasks complete."""
         self._setup_session("- [x] Done\n- [x] Also done\n")
-        result = cmd_status("ctx-test")
+        result = cmd_status(self.context)
         self.assertIn("NEXT: (none)", result.message)
 
 

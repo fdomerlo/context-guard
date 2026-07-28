@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 from guard.paths import get_paths, generate_agent_id
-from guard.manifest import load_manifest, save_manifest
+from guard.manifest import load_manifest, save_manifest, create_initial_manifest
 from guard.errors import (
     CommandResult,
     EXIT_OK,
@@ -113,12 +113,8 @@ def acquire(context, ttl):
     os.makedirs(p["base"], exist_ok=True)
     m = load_manifest(context)
     if not m:
-        m = {
-            "context_name": context,
-            "lock": {},
-            "reference_docs": [],
-            "files_in_scope": [],
-        }
+        m = create_initial_manifest(context)
+
 
     if not try_create_lockfile(context):
         existing = m.get("lock", {})

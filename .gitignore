@@ -1,3 +1,6 @@
 .context-guard/
 __pycache__/
 *.pyc
+*.tmp
+*.zip
+.venv/

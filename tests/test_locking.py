@@ -23,6 +23,7 @@ class TestWithWriteLock(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_locking_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -31,28 +32,28 @@ class TestWithWriteLock(unittest.TestCase):
 
     def test_acquires_and_releases(self):
         """with_write_lock acquires lock, runs fn, and releases lock."""
-        p = get_paths("ctx-test")
-        result = with_write_lock("ctx-test", lambda: "ok")
+        p = get_paths(self.context)
+        result = with_write_lock(self.context, lambda: "ok")
         self.assertEqual(result, "ok")
         # Lock file should be cleaned up
         self.assertFalse(os.path.exists(p["write_lock"]))
 
     def test_lock_released_on_exception(self):
         """with_write_lock releases lock even if fn raises."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
 
         def failing_fn():
             raise ValueError("boom")
 
         with self.assertRaises(ValueError):
-            with_write_lock("ctx-test", failing_fn)
+            with_write_lock(self.context, failing_fn)
 
         # Lock file should still be cleaned up
         self.assertFalse(os.path.exists(p["write_lock"]))
 
     def test_stale_lock_recovery_dead_pid(self):
         """with_write_lock recovers stale lock from a dead PID."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["write_lock"]), exist_ok=True)
 
         # Create a lockfile with a dead PID (PID 99999999 shouldn't exist)
@@ -60,13 +61,13 @@ class TestWithWriteLock(unittest.TestCase):
             f.write("99999999\n")
             f.write(f"{time.time()}\n")
 
-        result = with_write_lock("ctx-test", lambda: "recovered")
+        result = with_write_lock(self.context, lambda: "recovered")
         self.assertEqual(result, "recovered")
         self.assertFalse(os.path.exists(p["write_lock"]))
 
     def test_stale_lock_recovery_expired(self):
         """with_write_lock recovers stale lock that is too old."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["write_lock"]), exist_ok=True)
 
         # Create a lockfile with current PID but very old timestamp
@@ -74,12 +75,12 @@ class TestWithWriteLock(unittest.TestCase):
             f.write(f"{os.getpid()}\n")
             f.write(f"{time.time() - 100}\n")  # 100 seconds ago
 
-        result = with_write_lock("ctx-test", lambda: "recovered")
+        result = with_write_lock(self.context, lambda: "recovered")
         self.assertEqual(result, "recovered")
 
     def test_timeout_on_held_lock(self):
         """with_write_lock raises TimeoutError if lock can't be acquired."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["write_lock"]), exist_ok=True)
 
         # Create a lockfile with current PID and recent timestamp (not stale)
@@ -88,7 +89,7 @@ class TestWithWriteLock(unittest.TestCase):
             f.write(f"{time.time()}\n")
 
         with self.assertRaises(TimeoutError):
-            with_write_lock("ctx-test", lambda: None, timeout=0.1, retry_interval=0.02)
+            with_write_lock(self.context, lambda: None, timeout=0.1, retry_interval=0.02)
 
 
 class TestTryCreateLockfile(unittest.TestCase):
@@ -98,6 +99,7 @@ class TestTryCreateLockfile(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_locking_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -106,21 +108,23 @@ class TestTryCreateLockfile(unittest.TestCase):
 
     def test_creates_on_first_call(self):
         """First call to try_create_lockfile should succeed."""
-        result = try_create_lockfile("ctx-test")
+        result = try_create_lockfile(self.context)
         self.assertTrue(result)
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         self.assertTrue(os.path.exists(p["lock"]))
 
     def test_fails_on_second_call(self):
         """Second call to try_create_lockfile should fail."""
-        self.assertTrue(try_create_lockfile("ctx-test"))
-        result = try_create_lockfile("ctx-test")
+        self.assertTrue(try_create_lockfile(self.context))
+        result = try_create_lockfile(self.context)
         self.assertFalse(result)
 
     def test_different_contexts_independent(self):
         """Locks for different contexts are independent."""
-        self.assertTrue(try_create_lockfile("ctx-a"))
-        self.assertTrue(try_create_lockfile("ctx-b"))
+        ctx_a = os.path.join(self._tmpdir, "ctx-a")
+        ctx_b = os.path.join(self._tmpdir, "ctx-b")
+        self.assertTrue(try_create_lockfile(ctx_a))
+        self.assertTrue(try_create_lockfile(ctx_b))
 
 
 class TestAcquire(unittest.TestCase):
@@ -130,6 +134,7 @@ class TestAcquire(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_locking_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -138,21 +143,21 @@ class TestAcquire(unittest.TestCase):
 
     def test_success_fresh_context(self):
         """acquire on a fresh context should succeed."""
-        result = acquire("ctx-test", ttl=1800)
+        result = acquire(self.context, ttl=1800)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|LOCK_ACQUIRED", result.message)
 
         # Manifest should be created with lock info
-        m = load_manifest("ctx-test")
+        m = load_manifest(self.context)
         self.assertIsNotNone(m)
         self.assertTrue(m["lock"]["held"])
 
     def test_lock_held_by_another(self):
         """acquire fails when lock is already held and not stale."""
-        result1 = acquire("ctx-test", ttl=1800)
+        result1 = acquire(self.context, ttl=1800)
         self.assertEqual(result1.exit_code, EXIT_OK)
 
-        result2 = acquire("ctx-test", ttl=1800)
+        result2 = acquire(self.context, ttl=1800)
         self.assertEqual(result2.exit_code, EXIT_LOCK_HELD)
         self.assertIn("FAIL|LOCK_HELD", result2.message)
 
@@ -161,18 +166,18 @@ class TestAcquire(unittest.TestCase):
         from datetime import datetime, timedelta
 
         # Set up a lock that is already expired
-        result1 = acquire("ctx-test", ttl=1)
+        result1 = acquire(self.context, ttl=1)
         self.assertEqual(result1.exit_code, EXIT_OK)
 
         # Backdate the acquired_at to make the lock stale
-        m = load_manifest("ctx-test")
+        m = load_manifest(self.context)
         past = (datetime.now() - timedelta(seconds=10)).isoformat()
         m["lock"]["acquired_at"] = past
         m["lock"]["ttl_seconds"] = 1
-        save_manifest("ctx-test", m)
+        save_manifest(self.context, m)
 
         # Now a new acquire should succeed via stale takeover
-        result2 = acquire("ctx-test", ttl=1800)
+        result2 = acquire(self.context, ttl=1800)
         self.assertEqual(result2.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|LOCK_ACQUIRED", result2.message)
 

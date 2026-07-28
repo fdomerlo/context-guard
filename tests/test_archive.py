@@ -21,14 +21,17 @@ class TestArchiveSuccess(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_archive_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
         import shutil
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def _setup_complete_session(self, context="ctx-test"):
+    def _setup_complete_session(self, context=None):
         """Create a fully valid, completed session with all required artifacts."""
+        if context is None:
+            context = self._tmpdir
         p = get_paths(context)
         os.makedirs(p["base"], exist_ok=True)
 
@@ -55,9 +58,9 @@ class TestArchiveSuccess(unittest.TestCase):
 
     def test_successful_archive(self):
         """Archive succeeds when all tasks are complete and artifacts valid."""
-        p = self._setup_complete_session()
+        p = self._setup_complete_session(self._tmpdir)
 
-        result = cmd_archive("ctx-test")
+        result = cmd_archive(self._tmpdir)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|ARCHIVED", result.message)
 
@@ -75,12 +78,12 @@ class TestArchiveSuccess(unittest.TestCase):
 
     def test_session_cleaned_after_archive(self):
         """Original session directory should be cleaned after archive."""
-        p = self._setup_complete_session()
+        p = self._setup_complete_session(self._tmpdir)
 
-        cmd_archive("ctx-test")
+        cmd_archive(self._tmpdir)
 
-        # Session base directory should be completely removed
-        self.assertFalse(os.path.exists(p["base"]), "Session directory should be deleted")
+        # Active session files (e.g. manifest) should be removed
+        self.assertFalse(os.path.exists(p["manifest"]), "Session manifest should be deleted")
 
 
 
@@ -91,6 +94,7 @@ class TestArchiveBlocked(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_archive_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -99,11 +103,11 @@ class TestArchiveBlocked(unittest.TestCase):
 
     def test_blocked_by_incomplete_tasks(self):
         """Archive fails when tasks are not all complete."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
 
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
 
@@ -114,17 +118,17 @@ class TestArchiveBlocked(unittest.TestCase):
         with open(p["tasks"], "w") as f:
             f.write("- [x] Done task\n- [ ] Pending task\n")
 
-        result = cmd_archive("ctx-test")
+        result = cmd_archive(self.context)
         self.assertEqual(result.exit_code, EXIT_VALIDATION)
         self.assertIn("FAIL|ARCHIVE_BLOCKED|tasks_incomplete", result.message)
 
     def test_blocked_when_no_tasks(self):
         """Archive fails when there are no task files (total=0 → all_complete=false)."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
 
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
 
@@ -133,7 +137,7 @@ class TestArchiveBlocked(unittest.TestCase):
         with open(os.path.join(p["base"], "snapshot.md"), "w") as f:
             f.write("# Snapshot")
 
-        result = cmd_archive("ctx-test")
+        result = cmd_archive(self.context)
         self.assertEqual(result.exit_code, EXIT_VALIDATION)
         self.assertIn("FAIL|ARCHIVE_BLOCKED", result.message)
 
@@ -146,6 +150,7 @@ class TestArchiveValidationFailure(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_archive_")
         os.chdir(self._tmpdir)
+        self.context = self._tmpdir
 
     def tearDown(self):
         os.chdir(self._orig_cwd)
@@ -154,11 +159,11 @@ class TestArchiveValidationFailure(unittest.TestCase):
 
     def test_validation_fails_missing_objective(self):
         """Archive fails when objective.md is missing (validation)."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
 
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
 
@@ -169,16 +174,16 @@ class TestArchiveValidationFailure(unittest.TestCase):
             f.write("- [x] Done task\n")
 
         with self.assertRaises(ValidationError) as ctx:
-            cmd_archive("ctx-test")
+            cmd_archive(self.context)
         self.assertIn("MISSING|objective.md", ctx.exception.message)
 
     def test_validation_fails_missing_snapshot(self):
         """Archive fails when snapshot.md is missing (validation)."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
 
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
 
@@ -189,16 +194,16 @@ class TestArchiveValidationFailure(unittest.TestCase):
             f.write("- [x] Done task\n")
 
         with self.assertRaises(ValidationError) as ctx:
-            cmd_archive("ctx-test")
+            cmd_archive(self.context)
         self.assertIn("MISSING|snapshot.md", ctx.exception.message)
 
     def test_validation_fails_artifact_too_long(self):
         """Archive fails when an artifact exceeds MAX_ARTIFACT_CHARS."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
 
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
 
@@ -211,16 +216,16 @@ class TestArchiveValidationFailure(unittest.TestCase):
             f.write("- [x] Done\n")
 
         with self.assertRaises(ValidationError) as ctx:
-            cmd_archive("ctx-test")
+            cmd_archive(self.context)
         self.assertIn("TOO_LONG|objective.md", ctx.exception.message)
 
     def test_validation_fails_no_task_files(self):
         """Archive validation fails when neither blockers nor tasks exist."""
-        p = get_paths("ctx-test")
+        p = get_paths(self.context)
         os.makedirs(p["base"], exist_ok=True)
 
-        save_manifest("ctx-test", {
-            "context_name": "ctx-test",
+        save_manifest(self.context, {
+            "context_name": self.context,
             "lock": {"held": False},
         })
 
@@ -232,7 +237,7 @@ class TestArchiveValidationFailure(unittest.TestCase):
             f.write("# Snapshot")
 
         # This should fail at the completion check, not validation
-        result = cmd_archive("ctx-test")
+        result = cmd_archive(self.context)
         self.assertEqual(result.exit_code, EXIT_VALIDATION)
         self.assertIn("FAIL|ARCHIVE_BLOCKED", result.message)
 

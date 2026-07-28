@@ -16,7 +16,8 @@ class TestCmdValidate(unittest.TestCase):
         self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.mkdtemp(prefix="guard_test_validate_")
         os.chdir(self._tmpdir)
-        self.p = get_paths("ctx-test")
+        self.context = self._tmpdir
+        self.p = get_paths(self.context)
         os.makedirs(self.p["base"], exist_ok=True)
 
     def tearDown(self):
@@ -33,7 +34,7 @@ class TestCmdValidate(unittest.TestCase):
         self._write_file("snapshot.md", "More english text")
         self._write_file("tasks.md", "- [ ] Task 1")
         
-        result = cmd_validate("ctx-test")
+        result = cmd_validate(self.context)
         self.assertEqual(result.exit_code, EXIT_OK)
         
     def test_validate_max_length(self):
@@ -42,7 +43,7 @@ class TestCmdValidate(unittest.TestCase):
         self._write_file("tasks.md", "English")
         
         with self.assertRaises(ValidationError) as ctx:
-            cmd_validate("ctx-test", max_length=100)
+            cmd_validate(self.context, max_length=100)
         self.assertIn("TOO_LONG|objective.md", ctx.exception.message)
         
     def test_validate_spanish_detected(self):
@@ -51,7 +52,7 @@ class TestCmdValidate(unittest.TestCase):
         self._write_file("tasks.md", "English")
         
         with self.assertRaises(ValidationError) as ctx:
-            cmd_validate("ctx-test")
+            cmd_validate(self.context)
         self.assertIn("LANGUAGE_BOUNDARY|objective.md", ctx.exception.message)
 
 if __name__ == "__main__":

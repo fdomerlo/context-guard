@@ -11,6 +11,7 @@ EXIT_LOCK_HELD = 1         # otra sesión activa, no reintentar automáticamente
 EXIT_LOCK_CONTENDED = 2    # perdiste la carrera contra otro takeover de lock stale
 EXIT_VALIDATION = 3        # artefacto mal formado o excede el cap de tokens
 EXIT_GENERIC = 4           # manifest corrupto u otro error irrecuperable
+EXIT_BAD_TRANSITION = 5    # transición inválida en el pipeline (DAG)
 
 
 # ---------------------------------------------------------------------------
@@ -56,3 +57,11 @@ class ValidationError(GuardError):
     def __init__(self, failures):
         msg = "\n".join(f"FAIL|{f}" for f in failures)
         super().__init__(msg, EXIT_VALIDATION)
+
+
+class BadTransitionError(GuardError):
+    """Transición inválida en el pipeline de estados."""
+    def __init__(self, current_phase, next_phase, expected_next):
+        msg = f"FAIL|BAD_TRANSITION|from={current_phase}|to={next_phase}|expected={expected_next}"
+        super().__init__(msg, EXIT_BAD_TRANSITION)
+

@@ -20,7 +20,10 @@ from guard.commands import (
     cmd_status,
     cmd_doctor,
     cmd_archive,
-    cmd_load_skill,
+    cmd_begin,
+    cmd_commit,
+    cmd_rollback,
+    cmd_checkpoint,
 )
 from guard.errors import GuardError
 
@@ -31,6 +34,23 @@ def parse_args(argv=None):
     parser.add_argument("--format", choices=["text", "json"], default="text",
                         help="Output format (default: text)")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # -- Transacciones y Checkpoints --
+    p_begin = subparsers.add_parser("begin")
+    p_begin.add_argument("--context", required=True)
+    p_begin.add_argument("--phase", required=True)
+    p_begin.add_argument("--ttl", type=int, default=1800)
+
+    p_commit = subparsers.add_parser("commit")
+    p_commit.add_argument("--context", required=True)
+    p_commit.add_argument("--next-phase", required=True)
+
+    p_rollback = subparsers.add_parser("rollback")
+    p_rollback.add_argument("--context", required=True)
+
+    p_checkpoint = subparsers.add_parser("checkpoint")
+    p_checkpoint.add_argument("--context", required=True)
+    p_checkpoint.add_argument("--summary", required=True)
 
     # -- Sesión --
     p_check = subparsers.add_parser("check-lock")
@@ -70,9 +90,6 @@ def parse_args(argv=None):
     p_validate.add_argument("--max-length", type=int, default=None,
                             help="Override max artifact size")
 
-    p_load_skill = subparsers.add_parser("load-skill")
-    p_load_skill.add_argument("--skill", required=True, help="Skill name (e.g. review)")
-
     p_next = subparsers.add_parser("next-task")
     p_next.add_argument("--context", required=True)
     p_next.add_argument("--agent-id", default=None)
@@ -97,6 +114,10 @@ def dispatch(args):
         CommandResult
     """
     handlers = {
+        "begin": lambda: cmd_begin(args.context, args.phase, args.ttl),
+        "commit": lambda: cmd_commit(args.context, args.next_phase),
+        "rollback": lambda: cmd_rollback(args.context),
+        "checkpoint": lambda: cmd_checkpoint(args.context, args.summary),
         "check-lock": lambda: cmd_check_lock(args.context),
         "claim": lambda: cmd_claim(args.context, args.ttl),
         "acquire": lambda: cmd_claim(args.context, args.ttl),  # alias
@@ -113,9 +134,9 @@ def dispatch(args):
         "status": lambda: cmd_status(args.context),
         "doctor": lambda: cmd_doctor(args.context),
         "archive": lambda: cmd_archive(args.context),
-        "load-skill": lambda: cmd_load_skill(args.skill),
     }
     return handlers[args.command]()
+
 
 
 def _to_json(message, exit_code, command=None):
