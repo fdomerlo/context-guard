@@ -55,9 +55,13 @@ Para mantener expectativas claras en su adopción:
 
 ### Opción A: Ejecución Directa (Zero-Install con `uvx`) — RECOMENDADA
 
-No requiere clonar el repositorio previamente. Agrega el siguiente bloque al archivo de configuración MCP de tu IDE (ej. `mcp-settings.json` o `claude_desktop_config.json`):
+No requiere clonar el repositorio previamente. Agrega el siguiente bloque al archivo de configuración MCP de tu IDE:
 
-```json
+**Claude Desktop / Antigravity / Cursor:** `claude_desktop_config.json` o `mcp-settings.json`
+
+**OpenCode:** `~/.config/opencode/opencode.jsonc`
+
+```jsonc
 {
   "mcpServers": {
     "context-guard": {
@@ -80,7 +84,7 @@ Para tener el servidor clonado localmente en la ruta estándar de servidores MCP
 mkdir -p ~/.local/share/mcp-servers && git clone https://github.com/fdomerlo/context-guard.git ~/.local/share/mcp-servers/context-guard && cd ~/.local/share/mcp-servers/context-guard && uv venv && uv pip install -e .
 ```
 
-Configuración en el JSON del cliente (`mcp-settings.json` o `claude_desktop_config.json`):
+Configuración en el JSON del cliente (`mcp-settings.json`, `claude_desktop_config.json`, o `~/.config/opencode/opencode.jsonc` en OpenCode):
 
 ```json
 {

@@ -140,54 +140,24 @@ def dispatch(args):
 
 
 def _to_json(message, exit_code, command=None):
-    """Convert a pipe-delimited message to a JSON object.
+    """Convert a command result message to JSON.
 
-    Handles both single-line (e.g. 'SUCCESS|LOCK_ACQUIRED') and
-    multi-line key=value output (e.g. check-completion).
+    Handles pipe-delimited (single-line), key=value (multi-line),
+    and prose (multi-line) output formats.
     """
     lines = message.strip().split("\n")
 
-    # Check if output is key=value format (check-completion, status)
-    if any("=" in line for line in lines if line.strip()):
-        result = {}
+    if len(lines) > 1:
+        if any("=" in line.strip() for line in lines if line.strip()):
+            return _kv_to_json(lines, exit_code, command)
+        result = {"output": message.strip()}
         if command:
             result["command"] = command
-        current_source = None
-        sources = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                if current_source:
-                    sources.append(current_source)
-                    current_source = None
-                continue
-            if "=" in line:
-                key, _, value = line.partition("=")
-                # Try to parse as number or boolean
-                if value == "true":
-                    value = True
-                elif value == "false":
-                    value = False
-                else:
-                    try:
-                        value = int(value)
-                    except ValueError:
-                        pass
-                if key == "source":
-                    current_source = {"source": value}
-                elif current_source is not None:
-                    current_source[key] = value
-                else:
-                    result[key] = value
-        if current_source:
-            sources.append(current_source)
-        if sources:
-            result["sources"] = sources
         result["exit_code"] = exit_code
         return json.dumps(result)
 
-    # Pipe-delimited format: STATUS|ACTION|details...
-    parts = message.split("|")
+    line = lines[0].strip()
+    parts = line.split("|")
     result = {"status": parts[0]}
     if command:
         result["command"] = command
@@ -195,6 +165,45 @@ def _to_json(message, exit_code, command=None):
         result["action"] = parts[1]
     if len(parts) > 2:
         result["details"] = parts[2:]
+    result["exit_code"] = exit_code
+    return json.dumps(result)
+
+
+def _kv_to_json(lines, exit_code, command=None):
+    """Convert key=value lines to JSON. Used by check-completion."""
+    result = {}
+    if command:
+        result["command"] = command
+    current_source = None
+    sources = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            if current_source:
+                sources.append(current_source)
+                current_source = None
+            continue
+        if "=" in line:
+            key, _, value = line.partition("=")
+            if value == "true":
+                value = True
+            elif value == "false":
+                value = False
+            else:
+                try:
+                    value = int(value)
+                except ValueError:
+                    pass
+            if key == "source":
+                current_source = {"source": value}
+            elif current_source is not None:
+                current_source[key] = value
+            else:
+                result[key] = value
+    if current_source:
+        sources.append(current_source)
+    if sources:
+        result["sources"] = sources
     result["exit_code"] = exit_code
     return json.dumps(result)
 
