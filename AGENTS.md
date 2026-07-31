@@ -2,78 +2,78 @@
 
 ## Overview
 
-Transactional state manager for AI agents via MCP. Enforces `PLAN → EXECUTE → VERIFY → ARCHIVE` pipeline with atomic rollback. State lives in `<project-root>/.context-guard/manifest.json`.
+Transactional state manager for AI agents via CLI and MCP. Enforces a strict
+`PLAN → EXECUTE → VERIFY → ARCHIVE` pipeline per change, with atomic rollback.
+State lives in `<project-root>/.context-guard/changes/{name}/manifest.json`.
 
 ## Entrypoints
 
-- **MCP server** (default): `context-guard-mcp` — entrypoint `context_guard.mcp_server:main` (FastMCP over stdio)
-- **CLI**: `context-guard` — entrypoint `context_guard.guard.cli:main`
-- Shim: `context_guard/guard.py` delegates to `context_guard.guard.cli`
+- **CLI**: `cg` (short) or `context-guard` (long) — `context_guard.guard.cli:main`
+- **MCP server**: `context-guard-mcp` — transactional tools plus read-only ones
+  (`get_status`, `next_task`, `check_completion`, `validate`)
 
-## Commands
+## Multi-change
 
-| Action | CLI | MCP tool |
-|---|---|---|
-| Start phase | `begin --context <path> --phase <PHASE>` | `begin_transaction(context, phase)` |
-| Advance phase | `commit --context <path> --next-phase <PHASE>` | `commit_transaction(context, next_phase)` |
-| Abort | `rollback --context <path>` | `rollback_transaction(context)` |
-| Save progress | `checkpoint --context <path> --summary <text>` | `save_checkpoint(context, summary)` |
-| Claim/release lock | `claim --context <path>` / `release ...` | — |
-| Claim task | `claim-task --context <path> --task-id <id>` | — |
-| Next pending task | `next-task --context <path>` | — |
-| Status dump | `status --context <path>` | — |
-| Validate artifacts | `validate --context <path>` | — |
-| Doctor diagnostics | `doctor --context <path>` | — |
-| Archive completed | `archive --context <path>` | — |
+Every command accepts `--change <name>`. Omit it only when exactly one change
+is active — with several, the command errors and asks you to be explicit; it
+never guesses. `cg new <name>` scaffolds a change and begins PLAN. `cg list`
+shows active changes. `cg archive` moves a finished one to `changes/archive/`.
+`cg migrate` converts a legacy single-change or state-guard layout in place.
 
-## Pipeline DAG (strict)
+## Pipeline phases
 
-```
-PLAN → EXECUTE → VERIFY → ARCHIVE
-```
+Full instructions for each phase live in `phases/{plan,execute,verify}.md` —
+load the file for the phase you are entering and follow it. Do not skip a
+phase; `commit` rejects any transition outside this table.
 
-No skipping allowed. `commit` validates the legal transition matrix.
+| Phase   | Produces                              | Then                          |
+|---------|----------------------------------------|--------------------------------|
+| PLAN    | `objective.md`, `tasks.md`             | human review, then `cg approve` |
+| EXECUTE | code changes, `tasks.md` checked off   | `check-completion`             |
+| VERIFY  | `review-report.md`, `verify-report.md` | archive on approval             |
 
-## Hard Gates (validated on commit)
+## Hard gates (validated on `commit`)
 
-- **PLAN → EXECUTE**: `objective.md` + `tasks.md` must exist and not contain `[PENDING]`
-- **VERIFY → ARCHIVE**: `review-report.md` + `verify-report.md` must exist and not contain `[PENDING]`
+- **PLAN → EXECUTE**: `objective.md` + `tasks.md` must exist and contain no
+  `[PENDING]`.
+- **VERIFY → ARCHIVE**: `review-report.md` + `verify-report.md` must exist and
+  contain no `[PENDING]`.
 
-On `begin_transaction` with phase `PLAN`, 5 markdown files are auto-scaffolded in `.context-guard/` if missing: `objective.md`, `snapshot.md`, `tasks.md`, `review-report.md`, `verify-report.md` — all initialized with `[PENDING]`.
+`begin` on a fresh PLAN auto-scaffolds 5 markdown files in the change
+directory, all initialized with `[PENDING]`.
+
+## The `cg approve` step
+
+Before running `commit --next-phase EXECUTE`, present `objective.md` and
+`tasks.md` to the human and wait for explicit go-ahead in chat — never
+advance the phase unprompted. `cg approve --change <name> [--by <who>]
+[--hotfix --reason "<text>"]` is the command that will make this a hard,
+manifest-recorded gate (`EXIT_APPROVAL_REQUIRED`, code 6, if missing); until
+it ships, treat the chat confirmation as the gate. Either way, the real
+control is your harness's permission prompt: put `cg approve` on the "ask"
+list in `.claude/settings.json` (see `adapters/claude-code/`) so a human
+confirms it out of band, not just in the conversation.
+
+## Exit codes (schema v3)
+
+`0` OK · `1` GENERIC · `2` LOCK_HELD (retry) · `3` LOCK_CONTENDED (retry) ·
+`4` VALIDATION · `5` BAD_TRANSITION (do not retry) · `6` APPROVAL_REQUIRED
+(human-only). `--format json` is available on every command.
 
 ## Testing
 
-- Framework: **unittest** (no pytest)
-- Run all: `python -m unittest discover -s tests`
-- Single file: `python -m unittest tests/test_transaction.py`
-- Tests use `tempfile.mkdtemp()` — no fixtures, no services, no integration deps
-- Always run tests before committing: `python -m unittest discover -s tests`
-- Current suite: ~111 tests
+- Framework: **unittest**, run: `python -m unittest discover -s tests`
+- Tests use `tempfile.mkdtemp()` — no fixtures, no services
 
-## Build & Dependencies
+## Architecture notes
 
-- Python >= 3.9, only dependency: `mcp>=1.0.0`
-- Build backend: `hatchling`
-- Install: `uv pip install -e .` or `pip install -e .`
-
-## Pre-commit Hook
-
-File gate in `.githooks/pre-commit`. Activate with:
-
-```
-git config core.hooksPath .githooks
-```
-
-Rejects commits touching >2 files without an active context-guard transaction. Bypass: `CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...`
-
-## Architecture Notes
-
-- **Package**: `context_guard/guard/` contains all business logic; `mcp_server.py` is a thin wrapper over `transaction.py`.
-- **Locking**: Two levels — OS-level `.context-guard/.lock` (session lock via `O_CREAT|O_EXCL`) and `.context-guard/.write.lock` (short-lived mutex, stale after 30s).
-- **Stale detection**: PID check + timestamp TTL on both lock types.
-- **Agent identity**: `{pid}-{hostname}-{timestamp}` — generated per claim.
-- **Artifact cap**: 6000 chars per artifact.
-- **Language enforcement**: Artifacts must be in English; `validate` detects Spanish chars.
-- **Archive**: `cmd_archive` copies `.context-guard/` to `.context-guard/archive/{timestamp}_{ctxname}/` then clears the live session.
-- **Summary cap**: Checkpoint summary max 2000 chars.
-- **Lock legacy alias**: `acquire` subcommand is an alias for `claim`.
+- `context_guard/guard/`: `paths` (change resolution), `errors`, `manifest`
+  (atomic tmp+rename), `locking` (session + write lock, stale via PID/mtime),
+  `transaction` (`begin`/`commit`/`rollback`), `commands`, `cli`.
+- Task claims use a lease (`claim-task`/`next-task`/`doctor --fix`) for
+  multi-agent swarms working the same change concurrently.
+- Language enforcement: artifacts must be in English; `validate` rejects
+  Spanish text.
+- Pre-commit hook (`git config core.hooksPath .githooks`) rejects large
+  commits outside an active transaction. Bypass:
+  `CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...`
