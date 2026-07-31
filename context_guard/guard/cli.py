@@ -12,6 +12,7 @@ from .commands import (
     cmd_check_lock,
     cmd_new,
     cmd_list,
+    cmd_migrate,
     cmd_claim,
     cmd_release,
     cmd_claim_task,
@@ -120,10 +121,13 @@ def parse_args(argv=None):
     p_list = subparsers.add_parser("list")
     p_list.add_argument("--context", required=True)
 
+    p_migrate = subparsers.add_parser("migrate")
+    p_migrate.add_argument("--context", required=True)
+
     # Every context-scoped command accepts --change. Omitting it is only safe
     # when exactly one change is active; ambiguity is an error, never a guess.
     for sub in subparsers.choices.values():
-        if sub is p_list or sub is p_new:
+        if sub in (p_list, p_new, p_migrate):
             continue
         sub.add_argument("--change", default=None,
                          help="Change to operate on (required if several are active)")
@@ -141,6 +145,7 @@ def dispatch(args):
     handlers = {
         "new": lambda: cmd_new(args.context, args.name),
         "list": lambda: cmd_list(args.context),
+        "migrate": lambda: cmd_migrate(args.context),
         "begin": lambda: cmd_begin(args.context, args.phase, args.ttl, change),
         "commit": lambda: cmd_commit(args.context, args.next_phase, change),
         "rollback": lambda: cmd_rollback(args.context, change),
