@@ -8,6 +8,7 @@ version = "1.0.0"
 description = "Middleware transaccional y gestor de estado estricto para agentes de IA (MCP)"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
 dependencies = ["mcp>=1.0.0,<2.0.0"]
 
 [project.scripts]
