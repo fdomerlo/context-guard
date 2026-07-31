@@ -1,188 +1,279 @@
----
-type: readme
-title: Context Guard
-timestamp: 2026-07-28
-tags:
-  - mcp-server
-  - ai-agents
-  - transactional-state
-  - context-management
-description: Middleware transaccional y gestor de estado estricto para agentes de IA mediante Model Context Protocol (MCP).
----
+# Context Guard
 
-# Context Guard 🧠🛡️
+**The transactional memory layer for AI coding agents — your context survives crashes, compaction, and session loss.**
 
-**Middleware transaccional y gestor de estado estricto para agentes de IA (vía Model Context Protocol - MCP).**
-
-`Context Guard` es un servidor MCP en Python que actúa como un middleware determinista de control de estado y persistencia transaccional para agentes de Inteligencia Artificial. Garantiza la atomicidad en la ejecución de tareas complejas, previniendo la corrupción de estado y la deriva de contexto en ciclos de trabajo multi-turno.
+*[Leer en español](README.es.md)*
 
 ---
 
-## 🎯 El Problema que Aborda
+## The problem
 
-Los agentes de IA basados en Grandes Modelos de Lenguaje (LLMs) enfrentan limitaciones estructurales al ejecutar tareas de ingeniería compuestas o de larga duración:
+Long-running agent sessions degrade. Context drift, "lost in the middle,"
+completion hallucination (the agent believes it finished before it verified
+anything), and — the one that actually loses work — a crash or a compaction
+mid-task that leaves the repository half-edited with no way back.
 
-1. **Degradación y Deriva de Contexto (*Context Drift*):** A medida que la conversación se extiende, las instrucciones iniciales se diluyen. El agente pierde el foco del objetivo original y toma decisiones divergentes o contradictorias.
-2. **El Fenómeno "Lost in the Middle":** En contextos extensos, los modelos tienden a ignorar detalles críticos ubicados en la zona central de la ventana de contexto.
-3. **Alucinación de Completitud:** El agente asume erróneamente que una tarea está terminada sin haber ejecutado las verificaciones ni las pruebas necesarias.
-4. **Estados Corruptos e Incompletos:** Si el proceso se interrumpe (por límites de tokens, timeouts o fallas del sistema), el repositorio queda en un estado inconsistente a medio editar, sin mecanismos de reversión (*rollback*).
+context-guard is not another agent framework and it does not write code. It
+is a small, deterministic state machine that sits between an agent and a
+project: a manifest on disk that survives the agent's process ending, a
+strict `PLAN → EXECUTE → VERIFY → ARCHIVE` pipeline the agent cannot skip
+phases in, and a transaction log that can be rolled back. If the session
+dies, the manifest is what the next session reads to pick up exactly where
+the last one left off — that persistence, not the pipeline shape, is the
+point.
 
----
+## Quickstart
 
-## 💡 Qué Resuelve (La Solución)
+Five commands: plan a change, get a human to sign off on it, advance into
+execution, claim a task, and check where things stand.
 
-`context-guard` introduce una capa de gobierno estricta sobre el ciclo de vida del trabajo del agente mediante:
+<!-- quickstart:start -->
+```bash
+# (1) start a change — this begins PLAN and scaffolds the artifacts
+cg new redis-cache --context .
 
-* **Pipeline Estricto de 3 Estados (DAG):**
-  $$\text{PLAN} \longrightarrow \text{EXECUTE} \longrightarrow \text{VERIFY} \longrightarrow \text{ARCHIVE}$$
-  El agente no puede saltar fases (ej. pasar de `PLAN` a `VERIFY` directamente). Cada estado exige completar y validar sus entregables antes de avanzar.
-* **Transacciones Atómicas y Rollback:** Al iniciar cada fase (`begin_transaction`), se toma un snapshot del manifest. Si la fase falla o los tests no pasan, `rollback_transaction` restaura el estado previo de manera limpia.
-* **Control de Concurrencia y Locks a Nivel de OS:** Utiliza lockfiles del sistema operativo (`O_CREAT|O_EXCL`) y mutexes de escritura (`with_write_lock`) para evitar condiciones de carrera (*TOCTOU*) entre agentes o sesiones concurrentes.
-* **Servidor MCP Nativo:** Expone herramientas estructuradas a través de `stdio` (`begin_transaction`, `commit_transaction`, `rollback_transaction`, `save_checkpoint`), integrándose directamente con el flujo de trabajo del agente sin sobrecarga de tokens.
+# fill in the plan — an agent writes this, not you
+cat > .context-guard/changes/redis-cache/objective.md <<'EOF'
+# Objective: Add Redis caching
+Cache the top-N query results behind a 60s TTL.
+EOF
+cat > .context-guard/changes/redis-cache/tasks.md <<'EOF'
+- [ ] 1.1 Add the redis client dependency
+- [ ] 1.2 Wrap the query path with a cache lookup
+EOF
 
----
+# (2) a human reviews objective.md and tasks.md, then approves
+cg approve --context . --change redis-cache --by alice
 
-## 🚫 Qué NO Resuelve
+# (3) the recorded approval unlocks EXECUTE
+cg commit --context . --change redis-cache --next-phase EXECUTE
 
-Para mantener expectativas claras en su adopción:
+# (4) claim the next task atomically — safe with several agents at once
+cg next-task --context . --change redis-cache
 
-* **NO es un agente autónomo:** `context-guard` no escribe código, no analiza sintaxis ni genera razonamiento por sí solo. Es una herramienta determinista utilizada *por* el agente.
-* **NO es un ejecutor de pruebas (*Test Runner*):** No ejecuta `pytest` o `npm test` automáticamente; en su lugar, establece el protocolo transaccional que exige al agente ejecutar y validar los tests antes de permitir el `commit` a la siguiente fase.
+# (5) one-shot rehydration after a crash, a compaction, or a new session
+cg status --context . --change redis-cache
+```
+<!-- quickstart:end -->
 
----
+Every line above runs as written against a fresh directory; nothing here is
+illustrative shorthand.
 
-## 🚀 Instalación y Configuración
+## Install
 
-### Opción A: Ejecución Directa (Zero-Install con `uvx`) — RECOMENDADA
-
-No requiere clonar el repositorio previamente. Agrega el siguiente bloque al archivo de configuración MCP de tu IDE:
-
-**Claude Desktop / Antigravity / Cursor:** `claude_desktop_config.json` o `mcp-settings.json`
-
-**OpenCode:** `~/.config/opencode/opencode.jsonc`
+**Zero-install, via `uvx`** — add this to your MCP client's config
+(Claude Desktop, Antigravity, Cursor: `claude_desktop_config.json` /
+`mcp-settings.json`; OpenCode: `~/.config/opencode/opencode.jsonc`):
 
 ```jsonc
 {
   "mcpServers": {
     "context-guard": {
       "command": "uvx",
-      "args": [
-        "git+https://github.com/fdomerlo/context-guard.git"
-      ]
+      "args": ["git+https://github.com/fdomerlo/context-guard.git"]
     }
   }
 }
 ```
 
----
-
-### Opción B: Instalación Local Aislada (One-Liner)
-
-Para tener el servidor clonado localmente en la ruta estándar de servidores MCP:
+**CLI only**, for the `cg` binary without an MCP client:
 
 ```bash
-mkdir -p ~/.local/share/mcp-servers && git clone https://github.com/fdomerlo/context-guard.git ~/.local/share/mcp-servers/context-guard && cd ~/.local/share/mcp-servers/context-guard && uv venv && uv pip install -e .
+uv pip install git+https://github.com/fdomerlo/context-guard.git
 ```
 
-Configuración en el JSON del cliente (`mcp-settings.json`, `claude_desktop_config.json`, o `~/.config/opencode/opencode.jsonc` en OpenCode):
-
-```json
-{
-  "mcpServers": {
-    "context-guard": {
-      "command": "/ruta/a/tu/home/.local/share/mcp-servers/context-guard/.venv/bin/context-guard"
-    }
-  }
-}
-```
-
-
----
-
-## 📖 Guía de Uso (Instrucciones para el Agente)
-
-Para forzar al agente a utilizar `context-guard` en tareas complejas, incluye el siguiente **System Prompt** en la configuración de reglas de tu IDE (ej. `.clinerules`, `.cursorrules`, o Custom Instructions):
-
-```markdown
-## PROTOCOLO OBLIGATORIO DE GESTIÓN DE ESTADO: context-guard
-
-Para cualquier tarea que involucre refactorizaciones, cambios de arquitectura o modificaciones en múltiples archivos (umbral de complejidad > 2 archivos):
-
-1. **Fase PLAN:**
-   - Inicia la transacción llamando a `begin_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", phase="PLAN")`.
-   - Define el objetivo y desglosa las tareas.
-   - Guarda un checkpoint con `save_checkpoint(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", summary="...")`.
-   - Avanza la fase llamando a `commit_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", next_phase="EXECUTE")`.
-
-2. **Fase EXECUTE:**
-   - Inicia la fase con `begin_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", phase="EXECUTE")`.
-   - Realiza las modificaciones de código paso a paso.
-   - Si ocurren errores irrecuperables, ejecuta `rollback_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>")`.
-   - Al finalizar los cambios, llama a `commit_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", next_phase="VERIFY")`.
-
-3. **Fase VERIFY:**
-   - Inicia la fase con `begin_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", phase="VERIFY")`.
-   - Ejecuta la suite de pruebas del proyecto (`pytest`, `npm test`, etc.).
-   - Si las pruebas fallan, corrige o ejecuta `rollback_transaction`.
-   - Si todas las pruebas pasan, consolida el trabajo con `commit_transaction(context="<RUTA_ABSOLUTA_DEL_PROYECTO>", next_phase="ARCHIVE")`.
-
-REGLA CLAVE: El parámetro `context` debe ser SIEMPRE la ruta absoluta al directorio raíz del proyecto actual (ej. `/home/usuario/workspace/mi-proyecto`).
-```
-
-## 🔒 Git Hard Gate (Pre-Commit Hook)
-
-El proyecto incluye un **hook de pre-commit versionado** en `.githooks/` que actúa como un "gating duro" a nivel de sistema. Bloquea automáticamente los commits que modifican más de **N archivos** (por defecto 2) si no hay evidencia de que el protocolo `PLAN → EXECUTE → VERIFY` fue iniciado.
-
-### Activación
+**Local, editable**, for development:
 
 ```bash
-# Configura Git para usar el directorio de hooks versionado
-git config core.hooksPath .githooks
+git clone https://github.com/fdomerlo/context-guard.git
+cd context-guard && uv venv && uv pip install -e .
+git config core.hooksPath .githooks   # activates the pre-commit gate below
 ```
 
-### Comportamiento
+To wire up phases and slash commands for your harness, run
+`adapters/install.sh [target-project-dir]` — see
+[Adapters](#adapters-and-permission-configuration) below.
 
-| Condición | Resultado |
+## How it works
+
+```
+PLAN  →  EXECUTE  →  VERIFY  →  ARCHIVE
+```
+
+Each change (`.context-guard/changes/<name>/`) moves through this pipeline
+one phase at a time, enforced by code, not by convention:
+
+- **`begin`** refuses to start a phase that is not the manifest's
+  `lock_phase` — the DAG is checked before work starts, not only when it is
+  claimed done.
+- **`commit`** validates the phase's artifacts (`objective.md` + `tasks.md`
+  for PLAN, `review-report.md` + `verify-report.md` for VERIFY) contain no
+  leftover `[PENDING]` marker before advancing `lock_phase`.
+- **`begin` on a fresh PLAN** auto-scaffolds five markdown files —
+  `objective.md`, `snapshot.md`, `tasks.md`, `review-report.md`,
+  `verify-report.md` — each starting as `[PENDING]`, so the agent edits
+  templates instead of inventing a shape from scratch.
+- **`rollback`** restores the exact manifest snapshot taken when the phase
+  began.
+- **Session and write locks** are OS-level (`O_CREAT|O_EXCL`), with
+  liveness-checked stale detection, so two agents on the same change do not
+  silently race each other.
+- **Task claims** carry a lease (`claim-task` / `next-task` / `doctor
+  --fix`), so several agents can work one change concurrently without two of
+  them picking the same task.
+- **`--change <name>`** scopes every command to one change. Several changes
+  active and no `--change` given is an error naming them — never a silent
+  guess at "the first one."
+
+## Threat Model
+
+Read this before you rely on context-guard for anything you actually care
+about.
+
+The pipeline enforcement (`begin`/`commit` validating the DAG and the
+artifacts) is real code, not a system prompt suggestion — an agent using the
+`cg` tool cannot accidentally skip a phase or advance past `[PENDING]`
+artifacts. But that enforcement is **cooperative**: it only binds an agent
+that calls `cg` in the first place. An agent with a shell can write directly
+to `manifest.json`, or simply not use the tool at all, and nothing in the
+process stops it.
+
+The one command that is explicitly **human-only** is `cg approve`. It
+records the sign-off `commit --next-phase EXECUTE` requires — but the
+command itself is just as cooperative as the rest: an agent with a shell can
+run `cg approve` itself, and nothing in `cg` prevents that. The actual hard
+control does not live in `cg` at all — it is your harness's permission
+prompt on the `cg approve` command, configured per host in
+`adapters/*/PERMISSIONS.md`. That prompt runs outside the agent's process,
+which is the only place a control that does not depend on the agent's
+cooperation can live. `approve` is deliberately not exposed as an MCP tool,
+for the same reason: an MCP tool is a channel the permission prompt does not
+see.
+
+The pre-commit hook is the one layer that runs entirely outside the agent's
+process — git invokes it regardless of what the agent chose to do — but it
+is a perimeter check on file count, not a guarantee about correctness, and it
+ships with an audited bypass (`CONTEXT_GUARD_BYPASS=1`) by design: an
+unconditional block just gets `--no-verify`d, which leaves no trace at all.
+
+## CLI reference
+
+| Command | Purpose |
 |---|---|
-| ≤ 2 archivos modificados | ✅ Commit permitido (cambio trivial) |
-| > 2 archivos + transacción `context-guard` activa | ✅ Commit permitido |
-| > 2 archivos **sin** transacción | ❌ **Commit rechazado** |
+| `cg new <name> --context <path>` | Create a change and begin PLAN |
+| `cg list --context <path>` | List active changes and their phase |
+| `cg begin --phase <PHASE> --context <path>` | Start a transaction for the given phase |
+| `cg approve --context <path> [--by <who>] [--hotfix --reason "<text>"]` | Human-only: record the sign-off `commit` into EXECUTE requires |
+| `cg commit --next-phase <PHASE> --context <path>` | Validate the current phase's artifacts and advance the DAG |
+| `cg rollback --context <path>` | Restore the manifest snapshot taken at `begin` |
+| `cg checkpoint --summary "<text>" --context <path>` | Persist a session summary for warm-boot resume |
+| `cg claim --context <path>` | Acquire the session lock, taking over a stale one if needed |
+| `cg release --context <path> --agent-id <id>` | Release the session lock (ownership-checked) |
+| `cg claim-task --task-id <id> --context <path>` | Claim one task with a lease |
+| `cg release-task --task-id <id> --agent-id <id> --context <path>` | Release a claimed task |
+| `cg next-task --context <path>` | Claim and return the next unclaimed pending task |
+| `cg check-completion --context <path>` | Deterministic count of checked-off tasks |
+| `cg validate --context <path>` | Lint session artifacts: existence, size cap, language |
+| `cg status --context <path>` | One-shot summary for rehydration after context loss |
+| `cg doctor --context <path> [--fix]` | Diagnose (or repair) stale claims and locks |
+| `cg archive --context <path>` | Move a completed change to `changes/archive/` |
+| `cg migrate --context <path>` | Convert a legacy state-guard or context-guard 1.x layout in place |
 
-### Configuración
+Every command accepts `--format json`. `cg` and `context-guard` are the same
+binary under two entry points.
 
-| Variable de Entorno | Descripción | Default |
+## MCP server
+
+`context-guard-mcp` exposes eight tools over stdio — the four transactional
+ones plus four read-only ones for hosts with no shell (Claude Desktop is the
+case these exist for):
+
+`begin_transaction`, `commit_transaction`, `rollback_transaction`,
+`save_checkpoint`, `get_status`, `check_completion`, `validate`, `next_task`.
+
+`cg approve` is not an MCP tool. See Threat Model above.
+
+## Multi-change
+
+State lives under `.context-guard/changes/<name>/`, one manifest and lock
+set per change, so several changes can be planned and executed
+independently in the same project. `cg new <name>` creates one; `cg list`
+shows what is active; `cg archive` moves a finished one to
+`changes/archive/`. `cg migrate` converts both legacy layouts — state-guard's
+`state.ini` and context-guard 1.x's flat `.context-guard/` — in place and
+idempotently, preserving any recorded human approval it finds.
+
+## Pre-commit hook
+
+`.githooks/pre-commit` rejects commits touching more than a threshold number
+of files when no change shows the protocol was engaged (a completed phase or
+an open transaction). Activate it once per clone with
+`git config core.hooksPath .githooks`.
+
+- **Threshold**: `hook.file_threshold` in a change's manifest, or the
+  `CONTEXT_GUARD_FILE_THRESHOLD` environment variable, which wins over the
+  manifest. Across several active changes, the strictest configured value
+  applies.
+- **`files_in_scope`**: staged files outside an executing change's declared
+  scope produce a warning, never a block.
+- **Bypass**: `CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git
+  commit ...`. Every bypass is appended to `.context-guard/bypass.log` with
+  a timestamp and the file list — the door stays open, but nobody walks
+  through it unrecorded.
+
+## Exit codes
+
+| Code | Name | Meaning |
 |---|---|---|
-| `CONTEXT_GUARD_FILE_THRESHOLD` | Número máximo de archivos permitidos sin transacción | `2` |
-| `CONTEXT_GUARD_BYPASS` | Poner a `1` para bypass de emergencia | — |
-| `CONTEXT_GUARD_BYPASS_REASON` | Motivo del bypass (registrado en `.context-guard/bypass.log`) | `unspecified` |
+| `[0]` | `EXIT_OK` | Success. |
+| `[1]` | `EXIT_GENERIC` | Corrupt manifest, or no session at this context/change. |
+| `[2]` | `EXIT_LOCK_HELD` | Another agent holds the lock or claim. Retryable with backoff. |
+| `[3]` | `EXIT_LOCK_CONTENDED` | Lost the takeover race for a stale lock. Retryable. |
+| `[4]` | `EXIT_VALIDATION` | Missing artifact, leftover `[PENDING]`, oversized artifact, or non-English text. |
+| `[5]` | `EXIT_BAD_TRANSITION` | The phase requested is not the DAG's current `lock_phase`. Do not retry. |
+| `[6]` | `EXIT_APPROVAL_REQUIRED` | `commit` into EXECUTE with no recorded `cg approve`. Only a human resolves it. |
 
-### Bypass de Emergencia
+## Adapters and permission configuration
 
-En situaciones excepcionales donde necesitas hacer un commit sin el protocolo:
+Thin, per-harness wrappers live in `adapters/{claude-code,opencode,
+antigravity}/` — each points at `phases/{plan,execute,verify}.md` rather than
+duplicating them, and ships a `PERMISSIONS.md` documenting exactly how to put
+`cg approve` behind that harness's permission prompt. `adapters/install.sh`
+installs the right one for the detected host. The OpenCode and Antigravity
+adapters are ported from state-guard and covered by static tests only — they
+have not been run against a live host of either.
+
+## How this compares
+
+context-guard is not a spec-writing tool, and it is not trying to be one.
+
+| | context-guard | spec-kit | Kiro | bare `AGENTS.md` |
+|---|---|---|---|---|
+| Generates specs/plans from a prompt | No | Yes | Yes | No |
+| IDE-native experience | No (CLI + MCP) | Depends on host | Yes | No |
+| Enforces phase order in code, not prose | **Yes** | No | Partial | No |
+| Atomic manifest, survives a crash mid-phase | **Yes** | No | No | No |
+| OS-level locking for concurrent agents | **Yes** | No | No | No |
+| Human-approval gate before execution | **Yes** | No | No | No |
+
+What we do that they do not: runtime enforcement of a state machine that
+outlives the agent's process. What they do that we do not: everything about
+turning a prompt into a good spec in the first place. Use context-guard
+together with whichever of them already generates your `objective.md` — it
+was designed to consume one, not to write one.
+
+## Development
 
 ```bash
-CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='hotfix producción' git commit -m "fix: ..."
+git clone https://github.com/fdomerlo/context-guard.git
+cd context-guard && uv venv && uv pip install -e .
+python -m unittest discover -s tests
 ```
 
-> ⚠️ Todos los bypasses quedan registrados en `.context-guard/bypass.log` para auditoría.
+Framework: `unittest`. Every fix ships with an adversarial test that
+reproduces the bypass it closes; see `tests/test_adversarial_*.py` for the
+pattern. No fixtures on disk outside `tempfile.mkdtemp()`.
 
----
+## License
 
-## 🛠️ Errores Comunes (Troubleshooting)
-
-| Código | Nombre | Descripción y Solución |
-|---|---|---|
-| `[1]` | `EXIT_GENERIC` | **Error Genérico:** Manifest corrupto o no inicializado. |
-| `[2]` | `EXIT_LOCK_HELD` | **Transacción o Lock Trabado:** Ya existe una transacción activa en el contexto o el TTL no ha expirado. Reintentable con backoff. Si el proceso anterior se interrumpió de forma abrupta, espera a que expire el TTL o libera el archivo `.context-guard/.lock`. |
-| `[3]` | `EXIT_LOCK_CONTENDED` | **Contención de Lock:** Perdiste la carrera de takeover contra otro proceso. Reintentable. |
-| `[4]` | `EXIT_VALIDATION` | **Error de Validación:** Artefacto faltante, con `[PENDING]`, demasiado largo, o en el idioma incorrecto. También: resumen de checkpoint que supera los 2000 caracteres o parámetro de fase inválido. |
-| `[5]` | `EXIT_BAD_TRANSITION` | **Fase No Autorizada:** La fase pedida no es la que el DAG habilita (`lock_phase`), o se intentó saltar una fase del pipeline. **No reintentar.** Respeta la secuencia `PLAN -> EXECUTE -> VERIFY -> ARCHIVE`. |
-| `[6]` | `EXIT_APPROVAL_REQUIRED` | **Aprobación Humana Faltante:** Reservado para el flujo `cg approve`. Solo lo resuelve una persona. |
-
----
-
-## 🗺️ Roadmap / Próximos Pasos
-
-- [ ] **Snapshots de Código con Git:** Integración nativa con `git stash` / `git commit` temporal para que `rollback_transaction` no solo revierta el estado JSON del manifest, sino también las modificaciones en los archivos del árbol de trabajo.
-- [ ] **Métricas de Rendimiento de Contexto:** Reporte de economía de tokens y tiempo transcurrido por cada fase del pipeline.
-- [ ] **Soporte Multi-Agente Avanzado:** Mejoras en la resolución de conflictos cuando múltiples agentes paralelos ejecutan transacciones simultáneas en diferentes subdirectorios.
+MIT — see [LICENSE](LICENSE).
