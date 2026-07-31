@@ -6,6 +6,7 @@ claims to provide. A regression in any of them means the tool is lying about
 what it enforces.
 """
 
+import json
 import os
 import shutil
 import sys
@@ -21,6 +22,7 @@ from context_guard.guard.manifest import (
     load_manifest,
     save_manifest,
 )
+from context_guard.guard.cli import _to_json
 from context_guard.guard.locking import (
     acquire,
     with_write_lock,
@@ -531,6 +533,67 @@ class TestOrphanTaskClaimDeadlock(unittest.TestCase):
 
         claim = load_manifest(self.context)["task_claims"]["1.1"]
         self.assertEqual(claim["status"], "claimed")
+
+
+class TestNextTaskExposesOwnership(unittest.TestCase):
+    """1.2.4 — next-task must tell the caller which identity now owns the task.
+
+    next-task claims the task on the caller's behalf, generating an agent_id
+    when none was supplied. If it never reports that id back, the caller
+    cannot release what it just claimed: it has to either guess, or omit the
+    id entirely — which is precisely the anonymous-release bypass. Ownership
+    you cannot name is ownership you cannot enforce.
+    """
+
+    def setUp(self):
+        self._orig_cwd = os.getcwd()
+        self._tmpdir = tempfile.mkdtemp(prefix="guard_adv_owner_out_")
+        os.chdir(self._tmpdir)
+        self.context = self._tmpdir
+        p = get_paths(self.context)
+        os.makedirs(p["base"], exist_ok=True)
+        save_manifest(self.context, create_initial_manifest(self.context))
+        with open(p["tasks"], "w") as f:
+            f.write("- [ ] 1.1 Only task\n")
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_next_task_reports_the_claiming_agent(self):
+        result = cmd_next_task(self.context, agent_id="agent-A")
+
+        self.assertEqual(result.message, "SUCCESS|NEXT_TASK|1.1|agent-A|1.1 Only task")
+
+    def test_generated_agent_id_is_reported_back(self):
+        """The caller supplied no id, so the only way it can ever release this
+        task is if next-task hands the generated one back."""
+        result = cmd_next_task(self.context)
+
+        parts = result.message.split("|")
+        reported_agent = parts[3]
+        self.assertTrue(reported_agent)
+        self.assertEqual(
+            load_manifest(self.context)["task_claims"]["1.1"]["agent_id"],
+            reported_agent,
+        )
+
+    def test_reported_agent_id_can_actually_release_the_task(self):
+        """End to end: the identity next-task reports is accepted by the
+        ownership check, closing the claim/release loop without --force."""
+        result = cmd_next_task(self.context)
+        reported_agent = result.message.split("|")[3]
+
+        released = cmd_release_task(self.context, "1.1", agent_id=reported_agent)
+
+        self.assertEqual(released.exit_code, EXIT_OK)
+
+    def test_json_output_exposes_agent_id(self):
+        """The three harnesses consume --format json, not the text line."""
+        result = cmd_next_task(self.context, agent_id="agent-A")
+        payload = json.loads(_to_json(result.message, result.exit_code, "next-task"))
+
+        self.assertEqual(payload["details"][1], "agent-A")
 
 
 if __name__ == "__main__":

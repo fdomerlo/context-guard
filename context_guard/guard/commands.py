@@ -416,8 +416,11 @@ def cmd_next_task(context, agent_id=None):
         # Tarea disponible — reclamarla atómicamente
         result = cmd_claim_task(context, task_id, agent_id)
         if result.exit_code == EXIT_OK:
+            # The agent_id is part of the contract: next-task claims on the
+            # caller's behalf, so a caller that is never told which identity
+            # won cannot release what it just claimed.
             return CommandResult(
-                f"SUCCESS|NEXT_TASK|{task_id}|{description}",
+                f"SUCCESS|NEXT_TASK|{task_id}|{agent_id}|{description}",
                 EXIT_OK,
             )
 
