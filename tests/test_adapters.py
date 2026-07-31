@@ -63,6 +63,71 @@ class TestClaudeCodeAdapter(unittest.TestCase):
                 self.assertNotIn(term, text, f"{name} references dead state-guard machinery: {term}")
 
 
+class TestPermissionDocsPerHarness(unittest.TestCase):
+    """F4: "Documentar la configuración de permisos por harness en cada
+    adapter". PLAN.md 0.6 names the harness permission prompt as the only hard
+    control in the whole model — an adapter that installs the protocol without
+    it ships the cooperative half and calls it enforcement.
+    """
+
+    HOSTS = ("claude-code", "opencode", "antigravity")
+
+    def _permissions_doc(self, host):
+        path = os.path.join(ADAPTERS_DIR, host, "PERMISSIONS.md")
+        self.assertTrue(
+            os.path.exists(path),
+            f"adapters/{host}/PERMISSIONS.md is missing — each harness must "
+            "document how to put cg approve behind a human confirmation",
+        )
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_every_host_documents_how_to_gate_approve(self):
+        for host in self.HOSTS:
+            text = self._permissions_doc(host)
+            self.assertIn("cg approve", text, f"adapters/{host}/PERMISSIONS.md must name the command")
+
+    def test_docs_are_honest_about_what_the_prompt_guarantees(self):
+        """0.6 requires each layer to be honest about what it guarantees. An
+        adapter that promises the permission prompt stops a determined agent
+        repeats state-guard's crypto-gate mistake in a config file."""
+        for host in self.HOSTS:
+            text = self._permissions_doc(host).lower()
+            self.assertTrue(
+                "cooperative" in text,
+                f"adapters/{host}/PERMISSIONS.md must say what is cooperative "
+                "and what is hard (PLAN.md 0.6)",
+            )
+
+    def test_unverified_hosts_say_so(self):
+        """PLAN.md backlog: the OpenCode and Antigravity adapters were never run
+        against a real host. Documenting them as if they were is the kind of
+        claim the audits exist to falsify."""
+        for host in ("opencode", "antigravity"):
+            text = self._permissions_doc(host).lower()
+            self.assertIn("unverified", text)
+
+    def test_claude_code_doc_carries_the_exact_snippet(self):
+        """F4 asks for "el snippet exacto de settings.json" for Claude Code."""
+        text = self._permissions_doc("claude-code")
+        self.assertIn("settings.json", text)
+        self.assertIn('"ask"', text)
+        self.assertIn("Bash(cg approve*)", text)
+
+    def test_opencode_snippet_declares_the_permission(self):
+        path = os.path.join(ADAPTERS_DIR, "opencode", "agent.snippet.json")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        agent = data["context-guard"]
+        permission = agent.get("permission", {})
+        bash_rules = permission.get("bash", {})
+        self.assertTrue(
+            any("approve" in pattern and mode == "ask"
+                for pattern, mode in bash_rules.items()),
+            "opencode/agent.snippet.json must ask before running cg approve",
+        )
+
+
 class TestInstallSh(unittest.TestCase):
     def setUp(self):
         self.assertTrue(os.path.exists(INSTALL_SH), "adapters/install.sh is missing")

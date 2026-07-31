@@ -2,7 +2,13 @@
   "context-guard": {
     "mode": "all",
     "description": "Context Guard — transactional memory for AI coding agents",
-    "prompt": "Read AGENTS.md at the project root and follow it as your state contract. Phase instructions live in .context-guard/phases/{plan,execute,verify}.md. Use the cg CLI (begin/commit/rollback/checkpoint/status/next-task/validate); cg approve is a human-only command.",
-    "tools": { "read": true, "write": true, "edit": true, "bash": true }
+    "prompt": "Read AGENTS.md at the project root and follow it as your state contract. Phase instructions live in .context-guard/phases/{plan,execute,verify}.md. Use the cg CLI (begin/commit/rollback/checkpoint/status/next-task/validate); cg approve is a human-only command. If commit returns exit code 6 (APPROVAL_REQUIRED), stop and ask the user to run cg approve themselves.",
+    "tools": { "read": true, "write": true, "edit": true, "bash": true },
+    "permission": {
+      "bash": {
+        "cg approve*": "ask",
+        "context-guard approve*": "ask"
+      }
+    }
   }
 }

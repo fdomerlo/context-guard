@@ -57,6 +57,7 @@ with open(settings_path, "w", encoding="utf-8") as f:
     f.write("\n")
 PY
 echo "  -> Claude Code: cg approve added to the ask list in .claude/settings.json"
+echo "     (what that prompt does and does not guarantee: adapters/claude-code/PERMISSIONS.md)"
 
 # 2. OpenCode: register the agent + generate one slash command per phase file, per user
 OPENCODE_CFG="$HOME/.config/opencode/opencode.jsonc"
@@ -95,6 +96,7 @@ Read $PHASES_SRC/${phase_name}.md and follow its instructions exactly.
 EOF
     done
     echo "  -> OpenCode: agent registered, phase commands generated"
+    echo "     (permission setup, unverified against a real host: adapters/opencode/PERMISSIONS.md)"
 else
     echo "  -> OpenCode: no ~/.config/opencode found, skipped (pass FORCE_OPENCODE=1 to install anyway)"
 fi
@@ -110,6 +112,7 @@ if [[ -d "$HOME/.gemini" || "${FORCE_ANTIGRAVITY:-}" == "1" ]]; then
         cat "$SCRIPT_DIR/antigravity/bootstrap.snippet.md"
     } >> "$GEMINI_FILE"
     echo "  -> Antigravity: bootstrap block injected into $GEMINI_FILE"
+    echo "     (permission setup, unverified against a real host: adapters/antigravity/PERMISSIONS.md)"
 else
     echo "  -> Antigravity: no ~/.gemini found, skipped (pass FORCE_ANTIGRAVITY=1 to install anyway)"
 fi
