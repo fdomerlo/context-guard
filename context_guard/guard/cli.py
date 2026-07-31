@@ -10,6 +10,8 @@ import sys
 
 from .commands import (
     cmd_check_lock,
+    cmd_new,
+    cmd_list,
     cmd_claim,
     cmd_release,
     cmd_claim_task,
@@ -110,6 +112,22 @@ def parse_args(argv=None):
     p_archive = subparsers.add_parser("archive")
     p_archive.add_argument("--context", required=True)
 
+    # -- Changes --
+    p_new = subparsers.add_parser("new")
+    p_new.add_argument("--context", required=True)
+    p_new.add_argument("name")
+
+    p_list = subparsers.add_parser("list")
+    p_list.add_argument("--context", required=True)
+
+    # Every context-scoped command accepts --change. Omitting it is only safe
+    # when exactly one change is active; ambiguity is an error, never a guess.
+    for sub in subparsers.choices.values():
+        if sub is p_list or sub is p_new:
+            continue
+        sub.add_argument("--change", default=None,
+                         help="Change to operate on (required if several are active)")
+
     return parser.parse_args(argv)
 
 
@@ -119,27 +137,32 @@ def dispatch(args):
     Returns:
         CommandResult
     """
+    change = getattr(args, "change", None)
     handlers = {
-        "begin": lambda: cmd_begin(args.context, args.phase, args.ttl),
-        "commit": lambda: cmd_commit(args.context, args.next_phase),
-        "rollback": lambda: cmd_rollback(args.context),
-        "checkpoint": lambda: cmd_checkpoint(args.context, args.summary),
-        "check-lock": lambda: cmd_check_lock(args.context),
-        "claim": lambda: cmd_claim(args.context, args.ttl),
-        "acquire": lambda: cmd_claim(args.context, args.ttl),  # alias
-        "release": lambda: cmd_release(args.context, args.agent_id, args.force),
+        "new": lambda: cmd_new(args.context, args.name),
+        "list": lambda: cmd_list(args.context),
+        "begin": lambda: cmd_begin(args.context, args.phase, args.ttl, change),
+        "commit": lambda: cmd_commit(args.context, args.next_phase, change),
+        "rollback": lambda: cmd_rollback(args.context, change),
+        "checkpoint": lambda: cmd_checkpoint(args.context, args.summary, change),
+        "check-lock": lambda: cmd_check_lock(args.context, change),
+        "claim": lambda: cmd_claim(args.context, args.ttl, change),
+        "acquire": lambda: cmd_claim(args.context, args.ttl, change),  # alias
+        "release": lambda: cmd_release(args.context, args.agent_id, args.force, change),
         "claim-task": lambda: cmd_claim_task(
-            args.context, args.task_id, args.agent_id,
+            args.context, args.task_id, args.agent_id, change=change,
         ),
         "release-task": lambda: cmd_release_task(
-            args.context, args.task_id, args.agent_id, args.force,
+            args.context, args.task_id, args.agent_id, args.force, change,
         ),
-        "check-completion": lambda: cmd_check_completion(args.context),
-        "validate": lambda: cmd_validate(args.context, getattr(args, "max_length", None)),
-        "next-task": lambda: cmd_next_task(args.context, getattr(args, "agent_id", None)),
-        "status": lambda: cmd_status(args.context),
-        "doctor": lambda: cmd_doctor(args.context, args.fix),
-        "archive": lambda: cmd_archive(args.context),
+        "check-completion": lambda: cmd_check_completion(args.context, change),
+        "validate": lambda: cmd_validate(
+            args.context, getattr(args, "max_length", None), change),
+        "next-task": lambda: cmd_next_task(
+            args.context, getattr(args, "agent_id", None), change),
+        "status": lambda: cmd_status(args.context, change),
+        "doctor": lambda: cmd_doctor(args.context, args.fix, change),
+        "archive": lambda: cmd_archive(args.context, change),
     }
     return handlers[args.command]()
 

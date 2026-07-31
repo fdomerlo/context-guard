@@ -17,6 +17,7 @@ from context_guard.guard.transaction import (
     MAX_SUMMARY_CHARS,
 )
 from context_guard.guard.manifest import load_manifest, save_manifest
+from context_guard.guard.paths import get_paths
 from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_LOCK_HELD,
@@ -48,7 +49,7 @@ class TestTransaction(unittest.TestCase):
         self.assertEqual(m["transaction"]["txn_status"], "in_progress")
         self.assertEqual(m["transaction"]["txn_phase"], "PLAN")
 
-        base_dir = os.path.join(self.context, ".context-guard")
+        base_dir = get_paths(self.context)["base"]
         for fname in ["objective.md", "snapshot.md", "tasks.md", "review-report.md", "verify-report.md"]:
             fpath = os.path.join(base_dir, fname)
             self.assertTrue(os.path.exists(fpath))
@@ -85,7 +86,7 @@ class TestTransaction(unittest.TestCase):
         cmd_begin(self.context, "PLAN")
 
         # Fill objective.md and tasks.md so hard gate passes
-        base_dir = os.path.join(self.context, ".context-guard")
+        base_dir = get_paths(self.context)["base"]
         with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
@@ -112,7 +113,7 @@ class TestTransaction(unittest.TestCase):
     def test_commit_hard_gate_verify_to_archive_pending(self):
         """commit VERIFY -> ARCHIVE fails if review-report.md or verify-report.md contain [PENDING]."""
         cmd_begin(self.context, "PLAN")
-        base_dir = os.path.join(self.context, ".context-guard")
+        base_dir = get_paths(self.context)["base"]
         with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:

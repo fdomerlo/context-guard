@@ -16,6 +16,7 @@ from context_guard.mcp_server import (
     save_checkpoint,
 )
 from context_guard.guard.manifest import load_manifest
+from context_guard.guard.paths import get_paths
 from context_guard.guard.errors import EXIT_VALIDATION
 
 
@@ -41,7 +42,7 @@ class TestMCPServer(unittest.TestCase):
         m_chk = load_manifest(self.context)
         self.assertEqual(m_chk["session"]["session_summary"], "MCP Checkpoint")
 
-        base_dir = os.path.join(self.context, ".context-guard")
+        base_dir = get_paths(self.context)["base"]
         with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:

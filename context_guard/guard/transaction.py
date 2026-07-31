@@ -42,9 +42,9 @@ def is_stale(started_at_iso, ttl_seconds):
         return False
 
 
-def _scaffold_artifacts(context_path):
+def _scaffold_artifacts(context_path, change=None):
     """Genera plantillas por defecto en .context-guard/ para la fase PLAN si no existen."""
-    p = get_paths(context_path)
+    p = get_paths(context_path, change)
     base_dir = p["base"]
     os.makedirs(base_dir, exist_ok=True)
 
@@ -63,16 +63,16 @@ def _scaffold_artifacts(context_path):
                 f.write(default_content)
 
 
-def cmd_begin(context, phase, ttl=DEFAULT_TTL):
+def cmd_begin(context, phase, ttl=DEFAULT_TTL, change=None):
     """Inicia una transacción para la fase dada (PLAN, EXECUTE, VERIFY)."""
     if phase not in VALID_PHASES:
         return CommandResult(f"FAIL|INVALID_PHASE|{phase}", EXIT_VALIDATION)
 
     def _do():
-        p = get_paths(context)
-        m = load_manifest(context)
+        p = get_paths(context, change)
+        m = load_manifest(context, change)
         if not m:
-            m = create_initial_manifest(context)
+            m = create_initial_manifest(context, p["change"])
 
         # DAG enforcement: the manifest decides which phase may start, not the
         # caller. Without this, the pipeline was only checked on commit — and
@@ -95,7 +95,7 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL):
             )
 
         if phase == "PLAN":
-            _scaffold_artifacts(context)
+            _scaffold_artifacts(context, change)
 
         # Snapshot de estado previo para rollback
         snapshot = {
@@ -112,16 +112,16 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL):
         txn["snapshot"] = snapshot
 
         m["transaction"] = txn
-        save_manifest(context, m)
+        save_manifest(context, m, change)
         return CommandResult(f"SUCCESS|BEGIN|phase={phase}", EXIT_OK)
 
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)
 
 
-def cmd_commit(context, next_phase):
+def cmd_commit(context, next_phase, change=None):
     """Finaliza exitosamente la transacción y avanza en el DAG de 3 estados."""
     def _do():
-        m = load_manifest(context)
+        m = load_manifest(context, change)
         if not m:
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
 
@@ -138,7 +138,7 @@ def cmd_commit(context, next_phase):
             )
 
         # Validaciones estrictas (Hard Gates) antes de autorizar el cambio de fase
-        p = get_paths(context)
+        p = get_paths(context, change)
         base_dir = p["base"]
 
         if phase == "PLAN" and next_phase == "EXECUTE":
@@ -204,16 +204,16 @@ def cmd_commit(context, next_phase):
         session_sec = m.setdefault("session", {})
         session_sec["session_summary"] = auto_summary
 
-        save_manifest(context, m)
+        save_manifest(context, m, change)
         return CommandResult(f"SUCCESS|COMMIT|lock_phase={next_phase}", EXIT_OK)
 
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)
 
 
-def cmd_rollback(context):
+def cmd_rollback(context, change=None):
     """Revierte la transacción actual restaurando el snapshot previo."""
     def _do():
-        m = load_manifest(context)
+        m = load_manifest(context, change)
         if not m:
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
 
@@ -236,13 +236,13 @@ def cmd_rollback(context):
         txn["txn_started_at"] = None
         txn.pop("snapshot", None)
 
-        save_manifest(context, m)
+        save_manifest(context, m, change)
         return CommandResult("SUCCESS|ROLLBACK|restored", EXIT_OK)
 
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)
 
 
-def cmd_checkpoint(context, summary):
+def cmd_checkpoint(context, summary, change=None):
     """Guarda un checkpoint con el resumen de la sesión en manifest.json."""
     if len(summary) > MAX_SUMMARY_CHARS:
         return CommandResult(
@@ -251,13 +251,13 @@ def cmd_checkpoint(context, summary):
         )
 
     def _do():
-        m = load_manifest(context)
+        m = load_manifest(context, change)
         if not m:
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
 
         session_sec = m.setdefault("session", {})
         session_sec["session_summary"] = summary
-        save_manifest(context, m)
+        save_manifest(context, m, change)
         return CommandResult("SUCCESS|CHECKPOINT_SAVED", EXIT_OK)
 
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)

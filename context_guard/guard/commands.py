@@ -8,10 +8,19 @@ import os
 import shutil
 from datetime import datetime
 
-from .paths import get_paths, generate_agent_id, TASK_LINE_RE, MAX_ARTIFACT_CHARS
-from .manifest import load_manifest, save_manifest
+from .paths import (
+    get_paths,
+    generate_agent_id,
+    get_archive_dir,
+    get_changes_dir,
+    list_changes,
+    validate_change_name,
+    TASK_LINE_RE,
+    MAX_ARTIFACT_CHARS,
+)
+from .manifest import load_manifest, save_manifest, create_initial_manifest
 from .locking import with_write_lock, acquire
-from .transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint
+from .transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint, _scaffold_artifacts
 from .errors import (
     CommandResult,
     EXIT_OK,
@@ -68,14 +77,64 @@ def _pid_is_alive(pid):
 
 
 # ---------------------------------------------------------------------------
+# Changes
+# ---------------------------------------------------------------------------
+
+def cmd_new(context, change):
+    """Crea un change nuevo: directorio, manifest inicial y artefactos.
+
+    Refuses to touch an existing change rather than reinitialising it — a
+    `new` that silently reset a manifest would discard work whose whole
+    purpose is to survive.
+    """
+    name = validate_change_name(change)
+    p = get_paths(context, name)
+
+    if os.path.exists(p["manifest"]):
+        return CommandResult(
+            f"FAIL|CHANGE_EXISTS|{name}",
+            EXIT_VALIDATION,
+        )
+
+    os.makedirs(p["base"], exist_ok=True)
+    save_manifest(context, create_initial_manifest(context, name), name)
+    _scaffold_artifacts(context, name)
+    return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}", EXIT_OK)
+
+
+def cmd_list(context):
+    """Lista los changes activos con su fase actual.
+
+    Ordering here is for human display only; resolve_change never uses it to
+    pick a change implicitly.
+    """
+    names = list_changes(context)
+    if not names:
+        return CommandResult("NONE|NO_ACTIVE_CHANGES", EXIT_OK)
+
+    lines = []
+    for name in names:
+        m = load_manifest(context, name)
+        if not m:
+            lines.append(f"{name}|(no manifest)")
+            continue
+        lock = m.get("lock", {})
+        lines.append(
+            f"{name}|lock_phase={m.get('lock_phase', 'PLAN')}"
+            f"|session_lock={'HELD' if lock.get('held') else 'FREE'}"
+        )
+    return CommandResult("\n".join(lines), EXIT_OK)
+
+
+# ---------------------------------------------------------------------------
 # Sesión
 # ---------------------------------------------------------------------------
 
-def cmd_check_lock(context):
+def cmd_check_lock(context, change=None):
     """Solo lectura — para mostrar estado al desarrollador. NO usar como gate
     antes de acquire/claim: usar `claim` directamente evita la carrera de
     secuenciar dos llamadas separadas."""
-    m = load_manifest(context)
+    m = load_manifest(context, change)
     if not m or not m.get("lock", {}).get("held", False):
         return CommandResult("FREE", EXIT_OK)
 
@@ -90,16 +149,16 @@ def cmd_check_lock(context):
     return CommandResult(msg, EXIT_OK)
 
 
-def cmd_claim(context, ttl):
+def cmd_claim(context, ttl, change=None):
     """Un solo comando: check + acquire atómico. Reemplaza la secuencia
     check-lock → acquire del protocolo viejo, que dependía de que el modelo
     encadenara bien dos llamadas."""
     def _do():
-        return acquire(context, ttl)
-    return with_write_lock(context, _do)
+        return acquire(context, ttl, change)
+    return with_write_lock(context, _do, change=change)
 
 
-def cmd_release(context, agent_id=None, force=False):
+def cmd_release(context, agent_id=None, force=False, change=None):
     """Libera el lock de sesión, validando ownership.
 
     An anonymous release is an error: ownership that is only checked when the
@@ -113,8 +172,8 @@ def cmd_release(context, agent_id=None, force=False):
         )
 
     def _do():
-        p = get_paths(context)
-        m = load_manifest(context)
+        p = get_paths(context, change)
+        m = load_manifest(context, change)
         if m and "lock" in m:
             owner = m["lock"].get("acquired_by")
             if owner and agent_id and not force and owner != agent_id:
@@ -128,18 +187,18 @@ def cmd_release(context, agent_id=None, force=False):
             if force:
                 m["lock"]["force_released_at"] = datetime.now().isoformat()
                 m["lock"]["force_released_by"] = agent_id
-            save_manifest(context, m)
+            save_manifest(context, m, change)
         if os.path.exists(p["lock"]):
             os.remove(p["lock"])
         return CommandResult("SUCCESS|LOCK_RELEASED", EXIT_OK)
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)
 
 
 # ---------------------------------------------------------------------------
 # Tareas (lock granular por ítem)
 # ---------------------------------------------------------------------------
 
-def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_SECONDS):
+def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_SECONDS, change=None):
     """Reclama una tarea específica para un agente.
 
     A claim carries a lease. An expired claim is taken over rather than
@@ -150,7 +209,7 @@ def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_
         agent_id = generate_agent_id()
 
     def _do():
-        m = load_manifest(context)
+        m = load_manifest(context, change)
         if not m:
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
         tasks = m.setdefault("task_claims", {})
@@ -180,12 +239,12 @@ def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_
         if takeovers:
             claim["takeovers"] = takeovers
         tasks[task_id] = claim
-        save_manifest(context, m)
+        save_manifest(context, m, change)
         return CommandResult(f"SUCCESS|TASK_CLAIMED|{task_id}", EXIT_OK)
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)
 
 
-def cmd_release_task(context, task_id, agent_id=None, force=False):
+def cmd_release_task(context, task_id, agent_id=None, force=False, change=None):
     """Libera una tarea, validando ownership.
 
     Releasing without declaring an identity is an error: an ownership check
@@ -194,7 +253,7 @@ def cmd_release_task(context, task_id, agent_id=None, force=False):
     remains available and is recorded on the claim.
     """
     def _do():
-        m = load_manifest(context)
+        m = load_manifest(context, change)
         if not m:
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
         tasks = m.get("task_claims", {})
@@ -221,9 +280,9 @@ def cmd_release_task(context, task_id, agent_id=None, force=False):
         if force:
             task["force_released"] = True
             task["force_released_by"] = agent_id
-        save_manifest(context, m)
+        save_manifest(context, m, change)
         return CommandResult(f"SUCCESS|TASK_RELEASED|{task_id}", EXIT_OK)
-    return with_write_lock(context, _do)
+    return with_write_lock(context, _do, change=change)
 
 
 # ---------------------------------------------------------------------------
@@ -251,10 +310,10 @@ def _count_tasks_in_file(filepath):
     return total, completed
 
 
-def cmd_check_completion(context):
+def cmd_check_completion(context, change=None):
     """Parser determinista de tasks.md — el modelo no
     cuenta checkboxes a mano."""
-    p = get_paths(context)
+    p = get_paths(context, change)
     lines = []
 
     tasks = _count_tasks_in_file(p["tasks"])
@@ -274,14 +333,14 @@ def cmd_check_completion(context):
     return CommandResult("\n".join(lines), EXIT_OK)
 
 
-def cmd_validate(context, max_length=None):
+def cmd_validate(context, max_length=None, change=None):
     """Lint de los artefactos de sesión: existencia + cap de longitud.
     Determinista, no depende de que el modelo se autoevalúe.
 
     Requiere: objective.md + snapshot.md + tasks.md.
     Opcionalmente valida: review-report.md, verify-report.md si existen.
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
     session_dir = p["base"]
 
     if max_length is None:
@@ -385,14 +444,14 @@ def _parse_task_lines(filepath):
     return tasks
 
 
-def cmd_next_task(context, agent_id=None):
+def cmd_next_task(context, agent_id=None, change=None):
     """Encuentra la siguiente tarea pendiente no reclamada y la reclama
     atómicamente. Elimina la necesidad de que el modelo itere manualmente."""
     if not agent_id:
         agent_id = generate_agent_id()
 
-    p = get_paths(context)
-    m = load_manifest(context)
+    p = get_paths(context, change)
+    m = load_manifest(context, change)
     if not m:
         return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
 
@@ -414,7 +473,7 @@ def cmd_next_task(context, agent_id=None):
                 and not _claim_is_expired(existing)):
             continue
         # Tarea disponible — reclamarla atómicamente
-        result = cmd_claim_task(context, task_id, agent_id)
+        result = cmd_claim_task(context, task_id, agent_id, change=change)
         if result.exit_code == EXIT_OK:
             # The agent_id is part of the contract: next-task claims on the
             # caller's behalf, so a caller that is never told which identity
@@ -427,10 +486,10 @@ def cmd_next_task(context, agent_id=None):
     return CommandResult("DONE|NO_PENDING_TASKS", EXIT_OK)
 
 
-def cmd_status(context):
+def cmd_status(context, change=None):
     """Resumen one-shot del estado del contexto para rehidratación rápida."""
-    p = get_paths(context)
-    m = load_manifest(context)
+    p = get_paths(context, change)
+    m = load_manifest(context, change)
     lines = []
 
     if not m:
@@ -453,7 +512,7 @@ def cmd_status(context):
         lines.append("OBJECTIVE: (missing)")
 
     # Progress
-    completion = cmd_check_completion(context)
+    completion = cmd_check_completion(context, change)
     for comp_line in completion.message.split("\n"):
         if comp_line.startswith("total="):
             total = comp_line.split("=")[1]
@@ -498,7 +557,7 @@ def cmd_status(context):
 # Doctor — diagnóstico de salud
 # ---------------------------------------------------------------------------
 
-def cmd_doctor(context, fix=False):
+def cmd_doctor(context, fix=False, change=None):
     """Diagnóstico de salud del contexto. Detecta problemas comunes que un
     modelo free-tier puede causar: artefactos faltantes, language boundary
     violations, task claims huérfanos, manifest corrupto.
@@ -507,11 +566,11 @@ def cmd_doctor(context, fix=False):
     the operator's escape hatch when a whole swarm died at once; diagnosis and
     repair stay separate verbs so a read-only check never mutates state.
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
     findings = []
 
     # 1. Check session exists
-    m = load_manifest(context)
+    m = load_manifest(context, change)
     if not m:
         findings.append("ERROR: No session found (manifest.json missing)")
         return CommandResult("\n".join(findings), EXIT_GENERIC)
@@ -609,7 +668,7 @@ def cmd_doctor(context, fix=False):
         findings.append("OK: Session lock is FREE")
 
     if repaired:
-        save_manifest(context, m)
+        save_manifest(context, m, change)
 
     return CommandResult("\n".join(findings), EXIT_OK)
 
@@ -619,7 +678,7 @@ def cmd_doctor(context, fix=False):
 # Archive
 # ---------------------------------------------------------------------------
 
-def cmd_archive(context):
+def cmd_archive(context, change=None):
     """Archiva un contexto completado.
 
     1. Verifica que todas las tareas estén completas
@@ -630,10 +689,10 @@ def cmd_archive(context):
     6. Borra sesión original
     7. Libera session lock
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
 
     # 1. Verificar completitud
-    completion = cmd_check_completion(context)
+    completion = cmd_check_completion(context, change)
     output = completion.message
     # Determinar si todo está completo
     all_complete = False
@@ -652,12 +711,12 @@ def cmd_archive(context):
         )
 
     # 2. Validar artefactos (puede lanzar ValidationError)
-    cmd_validate(context)
+    cmd_validate(context, change=change)
 
     # 3-7. Lock + copy + verify + delete + unlock — todo dentro de write_lock
     def _do_archive():
         # Acquire session lock con TTL corto para el archivado
-        claim_result = acquire(context, ttl=60)
+        claim_result = acquire(context, ttl=60, change=change)
         if claim_result.exit_code != EXIT_OK:
             return claim_result
 
@@ -701,4 +760,4 @@ def cmd_archive(context):
                 except FileNotFoundError:
                     pass
 
-    return with_write_lock(context, _do_archive)
+    return with_write_lock(context, _do_archive, change=change)

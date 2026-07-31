@@ -9,6 +9,7 @@ import shutil
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from context_guard.guard.manifest import create_initial_manifest, load_manifest, save_manifest
+from context_guard.guard.paths import get_paths
 from context_guard.guard.transaction import cmd_begin, cmd_commit, cmd_rollback
 from context_guard.guard.errors import (
     EXIT_OK,
@@ -45,7 +46,7 @@ class TestThreeStatePhases(unittest.TestCase):
         res_b1 = cmd_begin(self.context, "PLAN")
         self.assertEqual(res_b1.exit_code, EXIT_OK)
 
-        base_dir = os.path.join(self.context, ".context-guard")
+        base_dir = get_paths(self.context)["base"]
         with open(os.path.join(base_dir, "objective.md"), "w", encoding="utf-8") as f:
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:

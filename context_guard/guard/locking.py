@@ -69,13 +69,15 @@ def _is_write_lock_stale(lockfile):
     return False
 
 
-def with_write_lock(context, fn, timeout=5, retry_interval=0.05):
+def with_write_lock(context, fn, timeout=5, retry_interval=0.05, change=None):
     """Mutex de milisegundos para serializar read-modify-write.
 
     Independiente del lock de negocio (que dura toda la sesión).
     Escribe PID + timestamp en el lockfile para stale-detection.
+    Cada change tiene su propio write lock: dos changes son dos workstreams y
+    no deben serializarse entre sí.
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
     lockfile = p["write_lock"]
     os.makedirs(os.path.dirname(lockfile), exist_ok=True)
     start = time.time()
@@ -108,9 +110,9 @@ def with_write_lock(context, fn, timeout=5, retry_interval=0.05):
 # Session lock — lockfile a nivel de SO
 # ---------------------------------------------------------------------------
 
-def try_create_lockfile(context):
+def try_create_lockfile(context, change=None):
     """Atomic test-and-set at the OS level. Returns True if acquired."""
-    p = get_paths(context)
+    p = get_paths(context, change)
     os.makedirs(os.path.dirname(p["lock"]), exist_ok=True)
     try:
         fd = os.open(p["lock"], os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -120,21 +122,21 @@ def try_create_lockfile(context):
         return False
 
 
-def acquire(context, ttl):
+def acquire(context, ttl, change=None):
     """Lógica compartida de claim/acquire: intenta tomar el lock, hace
     stale-takeover si corresponde.
 
     Returns:
         CommandResult con message y exit_code.
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
     os.makedirs(p["base"], exist_ok=True)
-    m = load_manifest(context)
+    m = load_manifest(context, change)
     if not m:
-        m = create_initial_manifest(context)
+        m = create_initial_manifest(context, p["change"])
 
 
-    if not try_create_lockfile(context):
+    if not try_create_lockfile(context, change):
         existing = m.get("lock", {})
         acquired_at = existing.get("acquired_at")
         ttl_existing = existing.get("ttl_seconds", ttl)
@@ -167,7 +169,7 @@ def acquire(context, ttl):
             # Another agent released or took over the lock first; the create
             # below is what decides who actually wins.
             pass
-        if not try_create_lockfile(context):
+        if not try_create_lockfile(context, change):
             return CommandResult("FAIL|LOCK_CONTENDED", EXIT_LOCK_CONTENDED)
 
     m["lock"] = {
@@ -176,5 +178,5 @@ def acquire(context, ttl):
         "acquired_by": generate_agent_id(),
         "ttl_seconds": ttl,
     }
-    save_manifest(context, m)
+    save_manifest(context, m, change)
     return CommandResult("SUCCESS|LOCK_ACQUIRED", EXIT_OK)

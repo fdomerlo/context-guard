@@ -66,3 +66,32 @@ class BadTransitionError(GuardError):
         msg = f"FAIL|BAD_TRANSITION|from={current_phase}|to={next_phase}|expected={expected_next}"
         super().__init__(msg, EXIT_BAD_TRANSITION)
 
+
+class AmbiguousChangeError(GuardError):
+    """Varios changes activos y ninguno indicado explícitamente.
+
+    Never resolved by picking one: guessing here means the agent operates on a
+    change it did not choose while believing it did.
+    """
+    def __init__(self, message):
+        super().__init__(message, EXIT_VALIDATION)
+
+
+class NoActiveChangeError(GuardError):
+    """El change pedido no existe en este contexto."""
+    def __init__(self, change):
+        super().__init__(f"FAIL|NO_SUCH_CHANGE|{change}", EXIT_GENERIC)
+
+
+class LegacyLayoutError(GuardError):
+    """El contexto usa el layout plano de 1.x y necesita migración.
+
+    Reported rather than silently ignored: starting a fresh empty change on
+    top of a 1.x context makes the user's existing work look like it vanished.
+    """
+    def __init__(self, base):
+        super().__init__(
+            f"FAIL|LEGACY_LAYOUT|{base}|run `cg migrate` to convert it",
+            EXIT_GENERIC,
+        )
+

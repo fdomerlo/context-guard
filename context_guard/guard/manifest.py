@@ -9,11 +9,17 @@ from .errors import ManifestCorruptError
 
 DEFAULT_PIPELINE = ["PLAN", "EXECUTE", "VERIFY"]
 
+# Bumped for the multi-change layout: manifests now live per change under
+# .context-guard/changes/{name}/ and carry the change name.
+SCHEMA_VERSION = 3
 
-def create_initial_manifest(context):
+
+def create_initial_manifest(context, change=None):
     """Crea una estructura de manifest inicial con el pipeline de 3 estados."""
     return {
+        "schema_version": SCHEMA_VERSION,
         "context_name": context,
+        "change_name": change,
         "current_phase": "PLAN",
         "lock_phase": "PLAN",
         "completed_phases": [],
@@ -30,8 +36,8 @@ def create_initial_manifest(context):
     }
 
 
-def load_manifest(context):
-    """Carga el manifest del contexto dado.
+def load_manifest(context, change=None):
+    """Carga el manifest del change dado.
 
     Returns:
         dict or None: El manifest parseado, o None si no existe.
@@ -39,7 +45,7 @@ def load_manifest(context):
     Raises:
         ManifestCorruptError: Si el archivo existe pero no es JSON válido.
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
     if not os.path.exists(p["manifest"]):
         return None
     try:
@@ -49,12 +55,12 @@ def load_manifest(context):
         raise ManifestCorruptError(str(e))
 
 
-def save_manifest(context, data):
+def save_manifest(context, data, change=None):
     """Escribe el manifest con write atómico (tmp + rename).
 
     Crea los directorios necesarios si no existen.
     """
-    p = get_paths(context)
+    p = get_paths(context, change)
     os.makedirs(os.path.dirname(p["manifest"]), exist_ok=True)
     tmp_path = p["manifest"] + ".tmp"
     with open(tmp_path, "w") as f:
