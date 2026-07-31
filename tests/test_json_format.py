@@ -10,6 +10,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from context_guard.guard.cli import _to_json
+from context_guard.guard.errors import EXIT_LOCK_HELD, EXIT_VALIDATION
 
 
 class TestToJson(unittest.TestCase):
@@ -25,7 +26,7 @@ class TestToJson(unittest.TestCase):
 
     def test_fail_with_details(self):
         """FAIL|ACTION|detail1|detail2 converts with details array."""
-        result = json.loads(_to_json("FAIL|TASK_CLAIMED|agent-A", 1, "claim-task"))
+        result = json.loads(_to_json("FAIL|TASK_CLAIMED|agent-A", EXIT_LOCK_HELD, "claim-task"))
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["action"], "TASK_CLAIMED")
         self.assertEqual(result["details"], ["agent-A"])
@@ -97,10 +98,10 @@ class TestToJson(unittest.TestCase):
     def test_multiline_fail(self):
         """Multi-line FAIL output (from ValidationError) converts to JSON."""
         msg = "FAIL|MISSING|objective.md\nFAIL|TOO_LONG|snapshot.md|7000/6000"
-        result = json.loads(_to_json(msg, 3, "validate"))
+        result = json.loads(_to_json(msg, EXIT_VALIDATION, "validate"))
         # Multi-line pipe messages — first line is used
         self.assertIn("exit_code", result)
-        self.assertEqual(result["exit_code"], 3)
+        self.assertEqual(result["exit_code"], EXIT_VALIDATION)
 
 
 if __name__ == "__main__":

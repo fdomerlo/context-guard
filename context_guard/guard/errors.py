@@ -7,11 +7,12 @@ from collections import namedtuple
 # ---------------------------------------------------------------------------
 
 EXIT_OK = 0
-EXIT_LOCK_HELD = 1         # otra sesión activa, no reintentar automáticamente
-EXIT_LOCK_CONTENDED = 2    # perdiste la carrera contra otro takeover de lock stale
-EXIT_VALIDATION = 3        # artefacto mal formado o excede el cap de tokens
-EXIT_GENERIC = 4           # manifest corrupto u otro error irrecuperable
-EXIT_BAD_TRANSITION = 5    # transición inválida en el pipeline (DAG)
+EXIT_GENERIC = 1             # corrupt manifest, missing session
+EXIT_LOCK_HELD = 2           # another agent holds the lock/claim — retry with backoff
+EXIT_LOCK_CONTENDED = 3      # lost the takeover race — retryable
+EXIT_VALIDATION = 4          # artifact missing / [PENDING] / too long / wrong language
+EXIT_BAD_TRANSITION = 5      # phase not authorized by the DAG — do NOT retry
+EXIT_APPROVAL_REQUIRED = 6   # human approval missing — only a human resolves it
 
 
 # ---------------------------------------------------------------------------

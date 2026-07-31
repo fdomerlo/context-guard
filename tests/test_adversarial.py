@@ -20,10 +20,56 @@ from context_guard.guard.manifest import (
     save_manifest,
 )
 from context_guard.guard.transaction import cmd_begin
+from context_guard.guard import errors
 from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_BAD_TRANSITION,
 )
+
+
+class TestExitCodeContract(unittest.TestCase):
+    """1.4 — the exit code table is the machine-readable contract every harness
+    consumes to decide whether to retry.
+
+    The attack this encodes is not an agent but a wrapper: if GENERIC and
+    LOCK_HELD swap places, a harness retrying on "lock held" will spin forever
+    against a corrupt manifest, and a harness that gives up on "generic" will
+    abandon work that only needed a backoff. Codes are load-bearing, so they
+    are pinned by value, not by symbol.
+    """
+
+    def test_unified_exit_code_values(self):
+        self.assertEqual(errors.EXIT_OK, 0)
+        self.assertEqual(errors.EXIT_GENERIC, 1)
+        self.assertEqual(errors.EXIT_LOCK_HELD, 2)
+        self.assertEqual(errors.EXIT_LOCK_CONTENDED, 3)
+        self.assertEqual(errors.EXIT_VALIDATION, 4)
+        self.assertEqual(errors.EXIT_BAD_TRANSITION, 5)
+
+    def test_approval_required_code_exists(self):
+        """Reserved by 1.4 for `cg approve`; the flow itself lands in F4."""
+        self.assertEqual(errors.EXIT_APPROVAL_REQUIRED, 6)
+
+    def test_exit_codes_are_distinct(self):
+        codes = [
+            errors.EXIT_OK,
+            errors.EXIT_GENERIC,
+            errors.EXIT_LOCK_HELD,
+            errors.EXIT_LOCK_CONTENDED,
+            errors.EXIT_VALIDATION,
+            errors.EXIT_BAD_TRANSITION,
+            errors.EXIT_APPROVAL_REQUIRED,
+        ]
+        self.assertEqual(len(codes), len(set(codes)))
+
+    def test_typed_exceptions_carry_the_unified_codes(self):
+        """The exception classes are a second source of truth for the same
+        table — they must not drift from the constants."""
+        self.assertEqual(errors.ManifestCorruptError("x").exit_code, 1)
+        self.assertEqual(errors.LockHeldError("agent").exit_code, 2)
+        self.assertEqual(errors.LockContendedError().exit_code, 3)
+        self.assertEqual(errors.ValidationError(["MISSING|x"]).exit_code, 4)
+        self.assertEqual(errors.BadTransitionError("PLAN", "VERIFY", "EXECUTE").exit_code, 5)
 
 
 class TestPhaseAuthorizationBypass(unittest.TestCase):

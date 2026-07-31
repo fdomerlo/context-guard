@@ -172,11 +172,12 @@ CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='hotfix producción' git comm
 
 | Código | Nombre | Descripción y Solución |
 |---|---|---|
-| `[1]` | `EXIT_LOCK_HELD` | **Transacción o Lock Trabado:** Ya existe una transacción activa en el contexto o el TTL no ha expirado. Si el proceso anterior se interrumpió de forma abrupta, espera a que expire el TTL o libera el archivo `.context-guard/.lock`. |
-| `[2]` | `EXIT_LOCK_CONTENDED` | **Contención de Lock:** Se detectó colisión con otro proceso intentando tomar el lock simultáneamente. |
-| `[3]` | `EXIT_VALIDATION` | **Error de Validación:** Resumen de checkpoint demasiado largo (supera los 2000 caracteres) o parámetro de fase inválido. |
-| `[4]` | `EXIT_GENERIC` | **Error Genérico:** Manifest corrupto o no inicializado. |
-| `[5]` | `EXIT_BAD_TRANSITION` | **Transición Inválida:** Se intentó saltar una fase del pipeline (ej. pasar de `PLAN` directamente a `VERIFY` sin pasar por `EXECUTE`). Respeta la secuencia `PLAN -> EXECUTE -> VERIFY -> ARCHIVE`. |
+| `[1]` | `EXIT_GENERIC` | **Error Genérico:** Manifest corrupto o no inicializado. |
+| `[2]` | `EXIT_LOCK_HELD` | **Transacción o Lock Trabado:** Ya existe una transacción activa en el contexto o el TTL no ha expirado. Reintentable con backoff. Si el proceso anterior se interrumpió de forma abrupta, espera a que expire el TTL o libera el archivo `.context-guard/.lock`. |
+| `[3]` | `EXIT_LOCK_CONTENDED` | **Contención de Lock:** Perdiste la carrera de takeover contra otro proceso. Reintentable. |
+| `[4]` | `EXIT_VALIDATION` | **Error de Validación:** Artefacto faltante, con `[PENDING]`, demasiado largo, o en el idioma incorrecto. También: resumen de checkpoint que supera los 2000 caracteres o parámetro de fase inválido. |
+| `[5]` | `EXIT_BAD_TRANSITION` | **Fase No Autorizada:** La fase pedida no es la que el DAG habilita (`lock_phase`), o se intentó saltar una fase del pipeline. **No reintentar.** Respeta la secuencia `PLAN -> EXECUTE -> VERIFY -> ARCHIVE`. |
+| `[6]` | `EXIT_APPROVAL_REQUIRED` | **Aprobación Humana Faltante:** Reservado para el flujo `cg approve`. Solo lo resuelve una persona. |
 
 ---
 

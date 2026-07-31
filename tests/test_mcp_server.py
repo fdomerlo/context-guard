@@ -16,6 +16,7 @@ from context_guard.mcp_server import (
     save_checkpoint,
 )
 from context_guard.guard.manifest import load_manifest
+from context_guard.guard.errors import EXIT_VALIDATION
 
 
 class TestMCPServer(unittest.TestCase):
@@ -66,7 +67,7 @@ class TestMCPServer(unittest.TestCase):
     def test_invalid_phase_mcp_tool(self):
         """Test error handling in MCP tools returns formatted string with exit code."""
         res = begin_transaction(self.context, "INVALID_PHASE")
-        self.assertTrue(res.startswith("[3] FAIL|INVALID_PHASE"))
+        self.assertTrue(res.startswith(f"[{EXIT_VALIDATION}] FAIL|INVALID_PHASE"))
 
 
 if __name__ == "__main__":
