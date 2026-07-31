@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -19,11 +20,14 @@ from context_guard.guard.manifest import (
     load_manifest,
     save_manifest,
 )
+from context_guard.guard.locking import acquire
+from context_guard.guard.paths import get_paths
 from context_guard.guard.transaction import cmd_begin
 from context_guard.guard import errors
 from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_BAD_TRANSITION,
+    EXIT_LOCK_HELD,
 )
 
 
@@ -138,6 +142,71 @@ class TestPhaseAuthorizationBypass(unittest.TestCase):
 
         self.assertEqual(res.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|BEGIN", res.message)
+
+
+class TestOrphanSessionLockDeadlock(unittest.TestCase):
+    """1.2.1 — a lockfile with no manifest metadata must not deadlock forever.
+
+    The attack is a crash, not an agent: a process dies between creating
+    `.lock` and writing its metadata into the manifest. `acquired_at` is then
+    None, the staleness check silently evaluates to False, and every future
+    claim returns LOCK_HELD forever. The session becomes permanently
+    unusable with no way out short of deleting files by hand — the exact
+    failure a crash-survival tool must not have.
+    """
+
+    def setUp(self):
+        self._orig_cwd = os.getcwd()
+        self._tmpdir = tempfile.mkdtemp(prefix="guard_adv_orphan_")
+        os.chdir(self._tmpdir)
+        self.context = self._tmpdir
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _orphan_lockfile(self, age_seconds):
+        """Create a .lock with no manifest lock metadata, aged via mtime."""
+        p = get_paths(self.context)
+        os.makedirs(p["base"], exist_ok=True)
+        save_manifest(self.context, create_initial_manifest(self.context))
+        with open(p["lock"], "w"):
+            pass
+        past = time.time() - age_seconds
+        os.utime(p["lock"], (past, past))
+        return p
+
+    def test_orphan_lockfile_older_than_ttl_is_taken_over(self):
+        """No acquired_at: fall back to the lockfile's mtime to judge staleness."""
+        self._orphan_lockfile(age_seconds=7200)
+
+        result = acquire(self.context, ttl=1800)
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        self.assertIn("SUCCESS|LOCK_ACQUIRED", result.message)
+
+    def test_orphan_lockfile_within_ttl_is_still_respected(self):
+        """The fallback must not become a free pass: a recent orphan lock is
+        still a lock, because the peer that made it may be seconds from
+        writing its metadata."""
+        self._orphan_lockfile(age_seconds=5)
+
+        result = acquire(self.context, ttl=1800)
+
+        self.assertEqual(result.exit_code, EXIT_LOCK_HELD)
+        self.assertIn("FAIL|LOCK_HELD", result.message)
+
+    def test_takeover_records_the_new_owner(self):
+        """After a takeover the manifest must name the agent that now holds
+        the lock, or the next crash repeats the same ambiguity."""
+        self._orphan_lockfile(age_seconds=7200)
+
+        acquire(self.context, ttl=1800)
+
+        m = load_manifest(self.context)
+        self.assertTrue(m["lock"]["held"])
+        self.assertIsNotNone(m["lock"]["acquired_at"])
+        self.assertIsNotNone(m["lock"]["acquired_by"])
 
 
 if __name__ == "__main__":

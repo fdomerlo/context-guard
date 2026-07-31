@@ -124,6 +124,18 @@ def acquire(context, ttl):
         if acquired_at:
             elapsed = (datetime.now() - datetime.fromisoformat(acquired_at)).total_seconds()
             stale = elapsed > ttl_existing
+        else:
+            # Orphan lockfile: a peer died between creating .lock and recording
+            # its metadata. Without a fallback the staleness check silently
+            # evaluates to False and the session deadlocks forever, so age the
+            # lock by the file's own mtime instead.
+            try:
+                elapsed = time.time() - os.path.getmtime(p["lock"])
+                stale = elapsed > ttl_existing
+            except OSError:
+                # Lockfile vanished between the failed create and this stat —
+                # another agent released it; fall through and retry the create.
+                stale = True
 
         if not stale:
             return CommandResult(
@@ -131,7 +143,12 @@ def acquire(context, ttl):
                 EXIT_LOCK_HELD,
             )
 
-        os.remove(p["lock"])
+        try:
+            os.remove(p["lock"])
+        except FileNotFoundError:
+            # Another agent released or took over the lock first; the create
+            # below is what decides who actually wins.
+            pass
         if not try_create_lockfile(context):
             return CommandResult("FAIL|LOCK_CONTENDED", EXIT_LOCK_CONTENDED)
 
