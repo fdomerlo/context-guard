@@ -21,6 +21,51 @@ from .errors import (
     ValidationError,
 )
 
+# How long a task claim stays valid without renewal. A claim that outlives its
+# lease is treated as abandoned, so a crashed agent cannot hold a task forever.
+DEFAULT_LEASE_SECONDS = 1800
+
+
+def _claim_is_expired(claim):
+    """True if a claim has outlived its lease.
+
+    An unparseable or missing timestamp counts as expired: a claim we cannot
+    date is a claim we cannot trust to be alive, and the alternative is the
+    permanent deadlock this lease exists to prevent.
+    """
+    claimed_at = claim.get("claimed_at")
+    if not claimed_at:
+        return True
+    lease = claim.get("lease_seconds", DEFAULT_LEASE_SECONDS)
+    try:
+        elapsed = (datetime.now() - datetime.fromisoformat(claimed_at)).total_seconds()
+    except (ValueError, TypeError):
+        return True
+    return elapsed > lease
+
+
+def _pid_from_agent_id(agent_id):
+    """Extract the PID from an agent_id of the form '{pid}-{host}-{ts}'.
+
+    agent_id is free-form — callers may pass anything — so this returns None
+    rather than raising when the leading token is not a PID.
+    """
+    if not agent_id or not isinstance(agent_id, str):
+        return None
+    head = agent_id.split("-", 1)[0]
+    try:
+        return int(head)
+    except ValueError:
+        return None
+
+
+def _pid_is_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Sesión
@@ -94,8 +139,13 @@ def cmd_release(context, agent_id=None, force=False):
 # Tareas (lock granular por ítem)
 # ---------------------------------------------------------------------------
 
-def cmd_claim_task(context, task_id, agent_id=None):
-    """Reclama una tarea específica para un agente."""
+def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_SECONDS):
+    """Reclama una tarea específica para un agente.
+
+    A claim carries a lease. An expired claim is taken over rather than
+    respected, and the takeover is recorded on the claim so a swarm's history
+    stays auditable.
+    """
     if not agent_id:
         agent_id = generate_agent_id()
 
@@ -105,16 +155,31 @@ def cmd_claim_task(context, task_id, agent_id=None):
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
         tasks = m.setdefault("task_claims", {})
         existing = tasks.get(task_id)
+
+        takeovers = []
         if existing and existing["status"] == "claimed":
-            return CommandResult(
-                f"FAIL|TASK_CLAIMED|{existing['agent_id']}",
-                EXIT_LOCK_HELD,
-            )
-        tasks[task_id] = {
+            if not _claim_is_expired(existing):
+                return CommandResult(
+                    f"FAIL|TASK_CLAIMED|{existing['agent_id']}",
+                    EXIT_LOCK_HELD,
+                )
+            takeovers = list(existing.get("takeovers", []))
+            takeovers.append({
+                "from_agent": existing.get("agent_id"),
+                "to_agent": agent_id,
+                "at": datetime.now().isoformat(),
+                "reason": "lease_expired",
+            })
+
+        claim = {
             "status": "claimed",
             "agent_id": agent_id,
             "claimed_at": datetime.now().isoformat(),
+            "lease_seconds": lease_seconds,
         }
+        if takeovers:
+            claim["takeovers"] = takeovers
+        tasks[task_id] = claim
         save_manifest(context, m)
         return CommandResult(f"SUCCESS|TASK_CLAIMED|{task_id}", EXIT_OK)
     return with_write_lock(context, _do)
@@ -342,7 +407,11 @@ def cmd_next_task(context, agent_id=None):
         if status == "done":
             continue
         existing = claimed.get(task_id)
-        if existing and existing["status"] == "claimed":
+        # An expired claim is an abandoned one: skipping it regardless of age
+        # let a single crashed agent retire a task from the queue permanently,
+        # and the run then reported DONE with work left undone.
+        if (existing and existing["status"] == "claimed"
+                and not _claim_is_expired(existing)):
             continue
         # Tarea disponible — reclamarla atómicamente
         result = cmd_claim_task(context, task_id, agent_id)
@@ -426,10 +495,15 @@ def cmd_status(context):
 # Doctor — diagnóstico de salud
 # ---------------------------------------------------------------------------
 
-def cmd_doctor(context):
+def cmd_doctor(context, fix=False):
     """Diagnóstico de salud del contexto. Detecta problemas comunes que un
     modelo free-tier puede causar: artefactos faltantes, language boundary
-    violations, task claims huérfanos, manifest corrupto."""
+    violations, task claims huérfanos, manifest corrupto.
+
+    With fix=True, also releases task claims whose owning PID is gone. This is
+    the operator's escape hatch when a whole swarm died at once; diagnosis and
+    repair stay separate verbs so a read-only check never mutates state.
+    """
     p = get_paths(context)
     findings = []
 
@@ -477,10 +551,24 @@ def cmd_doctor(context):
 
     # 4. Check stale task claims
     claims = m.get("task_claims", {})
+    repaired = []
     for task_id, claim in claims.items():
         if claim.get("status") == "claimed":
             claimed_at = claim.get("claimed_at", "")
             agent = claim.get("agent_id", "unknown")
+            if fix:
+                pid = _pid_from_agent_id(agent)
+                # An opaque agent_id names no PID we can probe, so we leave it
+                # alone: guessing wrong here would trample a working agent.
+                if pid is not None and not _pid_is_alive(pid):
+                    claim["status"] = "released"
+                    claim["released_at"] = datetime.now().isoformat()
+                    claim["released_reason"] = "dead_pid"
+                    repaired.append(task_id)
+                    findings.append(
+                        f"FIXED: Task {task_id} released — owner {agent} "
+                        f"(pid {pid}) is gone")
+                    continue
             if claimed_at:
                 try:
                     claimed_time = datetime.fromisoformat(claimed_at)
@@ -516,6 +604,10 @@ def cmd_doctor(context):
                 findings.append("WARN: Session lock has unparseable timestamp")
     else:
         findings.append("OK: Session lock is FREE")
+
+    if repaired:
+        save_manifest(context, m)
+
     return CommandResult("\n".join(findings), EXIT_OK)
 
 

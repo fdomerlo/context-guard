@@ -103,6 +103,8 @@ def parse_args(argv=None):
 
     p_doctor = subparsers.add_parser("doctor")
     p_doctor.add_argument("--context", required=True)
+    p_doctor.add_argument("--fix", action="store_true",
+                          help="Release task claims whose owning PID is gone")
 
     # -- Archive --
     p_archive = subparsers.add_parser("archive")
@@ -136,7 +138,7 @@ def dispatch(args):
         "validate": lambda: cmd_validate(args.context, getattr(args, "max_length", None)),
         "next-task": lambda: cmd_next_task(args.context, getattr(args, "agent_id", None)),
         "status": lambda: cmd_status(args.context),
-        "doctor": lambda: cmd_doctor(args.context),
+        "doctor": lambda: cmd_doctor(args.context, args.fix),
         "archive": lambda: cmd_archive(args.context),
     }
     return handlers[args.command]()

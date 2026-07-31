@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -31,8 +32,11 @@ from context_guard.guard.transaction import cmd_begin
 from context_guard.guard.commands import (
     cmd_claim,
     cmd_claim_task,
+    cmd_doctor,
+    cmd_next_task,
     cmd_release,
     cmd_release_task,
+    DEFAULT_LEASE_SECONDS,
 )
 from context_guard.guard import errors
 from context_guard.guard.errors import (
@@ -390,6 +394,143 @@ class TestReleaseWithoutOwnership(unittest.TestCase):
 
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|LOCK_RELEASED", result.message)
+
+
+class TestOrphanTaskClaimDeadlock(unittest.TestCase):
+    """1.2.3 — a claim held by a dead agent must not block a task forever.
+
+    The attack is again a crash, and it is the one that silently kills a
+    swarm: next-task skipped any task whose claim status was "claimed",
+    regardless of how old the claim was or whether the claiming process still
+    existed. One agent dying mid-task removed that task from the queue
+    permanently, and the run reported DONE with work left undone — the worst
+    kind of failure, because it looks like success.
+    """
+
+    def setUp(self):
+        self._orig_cwd = os.getcwd()
+        self._tmpdir = tempfile.mkdtemp(prefix="guard_adv_lease_")
+        os.chdir(self._tmpdir)
+        self.context = self._tmpdir
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _session_with_tasks(self, tasks="- [ ] 1.1 Only task\n"):
+        p = get_paths(self.context)
+        os.makedirs(p["base"], exist_ok=True)
+        save_manifest(self.context, create_initial_manifest(self.context))
+        for name in ("objective.md", "snapshot.md"):
+            with open(os.path.join(p["base"], name), "w") as f:
+                f.write("Content.\n")
+        with open(p["tasks"], "w") as f:
+            f.write(tasks)
+        return p
+
+    def _expire_claim(self, task_id):
+        """Age a claim past its lease, as a crashed agent's claim would be."""
+        m = load_manifest(self.context)
+        claim = m["task_claims"][task_id]
+        lease = claim.get("lease_seconds", DEFAULT_LEASE_SECONDS)
+        claim["claimed_at"] = (
+            datetime.now() - timedelta(seconds=lease + 60)
+        ).isoformat()
+        save_manifest(self.context, m)
+
+    def test_claim_records_a_lease(self):
+        """Without a lease there is no way to tell abandoned from in-flight."""
+        self._session_with_tasks()
+        cmd_claim_task(self.context, "1.1", agent_id="agent-A")
+
+        claim = load_manifest(self.context)["task_claims"]["1.1"]
+        self.assertEqual(claim["lease_seconds"], DEFAULT_LEASE_SECONDS)
+
+    def test_expired_claim_is_reclaimable_by_next_task(self):
+        """The deadlock itself: the only task is held by a dead agent."""
+        self._session_with_tasks()
+        cmd_claim_task(self.context, "1.1", agent_id="dead-agent")
+        self._expire_claim("1.1")
+
+        result = cmd_next_task(self.context, agent_id="agent-B")
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        self.assertIn("SUCCESS|NEXT_TASK|1.1", result.message)
+        self.assertNotIn("DONE|NO_PENDING_TASKS", result.message)
+
+    def test_takeover_is_logged_in_the_manifest(self):
+        """Stealing a lease is legitimate but must never be silent."""
+        self._session_with_tasks()
+        cmd_claim_task(self.context, "1.1", agent_id="dead-agent")
+        self._expire_claim("1.1")
+
+        cmd_next_task(self.context, agent_id="agent-B")
+
+        claim = load_manifest(self.context)["task_claims"]["1.1"]
+        self.assertEqual(claim["agent_id"], "agent-B")
+        takeovers = claim.get("takeovers", [])
+        self.assertEqual(len(takeovers), 1)
+        self.assertEqual(takeovers[0]["from_agent"], "dead-agent")
+        self.assertEqual(takeovers[0]["to_agent"], "agent-B")
+        self.assertIn("at", takeovers[0])
+
+    def test_live_claim_within_lease_is_still_respected(self):
+        """The lease must not become a license to trample working agents."""
+        self._session_with_tasks("- [ ] 1.1 First\n- [ ] 1.2 Second\n")
+        cmd_claim_task(self.context, "1.1", agent_id="agent-A")
+
+        result = cmd_next_task(self.context, agent_id="agent-B")
+
+        self.assertIn("SUCCESS|NEXT_TASK|1.2", result.message)
+        self.assertEqual(
+            load_manifest(self.context)["task_claims"]["1.1"]["agent_id"],
+            "agent-A",
+        )
+
+    def test_doctor_fix_releases_claims_of_dead_pids(self):
+        """doctor --fix is the operator's escape hatch when a whole swarm died."""
+        self._session_with_tasks()
+        cmd_claim_task(self.context, "1.1", agent_id="99999999-somehost-1700000000")
+
+        result = cmd_doctor(self.context, fix=True)
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        self.assertIn("FIXED", result.message)
+        claim = load_manifest(self.context)["task_claims"]["1.1"]
+        self.assertNotEqual(claim["status"], "claimed")
+
+    def test_doctor_fix_keeps_claims_of_live_pids(self):
+        """A live owner is not collateral damage."""
+        self._session_with_tasks()
+        live_agent = f"{os.getpid()}-somehost-1700000000"
+        cmd_claim_task(self.context, "1.1", agent_id=live_agent)
+
+        cmd_doctor(self.context, fix=True)
+
+        claim = load_manifest(self.context)["task_claims"]["1.1"]
+        self.assertEqual(claim["status"], "claimed")
+
+    def test_doctor_fix_tolerates_opaque_agent_ids(self):
+        """agent_id is free-form; an id with no parseable PID must not crash
+        the only tool an operator has left."""
+        self._session_with_tasks()
+        cmd_claim_task(self.context, "1.1", agent_id="agent-A")
+
+        result = cmd_doctor(self.context, fix=True)
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        claim = load_manifest(self.context)["task_claims"]["1.1"]
+        self.assertEqual(claim["status"], "claimed")
+
+    def test_doctor_without_fix_does_not_mutate(self):
+        """Diagnosis and repair are separate verbs."""
+        self._session_with_tasks()
+        cmd_claim_task(self.context, "1.1", agent_id="99999999-somehost-1700000000")
+
+        cmd_doctor(self.context)
+
+        claim = load_manifest(self.context)["task_claims"]["1.1"]
+        self.assertEqual(claim["status"], "claimed")
 
 
 if __name__ == "__main__":
