@@ -72,6 +72,17 @@ class TestPhaseDocs(unittest.TestCase):
         text = self._read("plan.md")
         self.assertIn("cg approve", text)
 
+    def test_plan_does_not_describe_approve_as_unshipped(self):
+        """The PLAN phase doc is what the agent loads before asking for a
+        sign-off. If it still says the command is coming, the agent will settle
+        for a chat confirmation and commit on it."""
+        text = self._read("plan.md")
+        for hedge in ("until it ships", "will turn this", "is the command that will"):
+            self.assertNotIn(hedge, text, f"phases/plan.md hedges about cg approve ('{hedge}')")
+
+    def test_plan_documents_the_approval_exit_code(self):
+        self.assertIn("APPROVAL_REQUIRED", self._read("plan.md"))
+
     def test_plan_does_not_reference_dead_crypto_gate(self):
         text = self._read("plan.md").lower()
         for dead_term in ("/dev/tty", "sha-256", "plan-confirm", "plan-approve"):

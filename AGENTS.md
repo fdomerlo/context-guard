@@ -45,13 +45,16 @@ directory, all initialized with `[PENDING]`.
 ## The `cg approve` step
 
 Before running `commit --next-phase EXECUTE`, present `objective.md` and
-`tasks.md` to the human and wait for explicit go-ahead in chat — never
-advance the phase unprompted. `cg approve --change <name> [--by <who>]
-[--hotfix --reason "<text>"]` is the command that will make this a hard,
-manifest-recorded gate (`EXIT_APPROVAL_REQUIRED`, code 6, if missing); until
-it ships, treat the chat confirmation as the gate. Either way, the real
-control is your harness's permission prompt: put `cg approve` on the "ask"
-list in `.claude/settings.json` (see `adapters/claude-code/`) so a human
+`tasks.md` to the human and wait for explicit go-ahead — never advance the
+phase unprompted. `commit` enforces this: without a recorded approval it fails
+with `APPROVAL_REQUIRED` (code 6).
+
+`cg approve --change <name> [--by <who>] [--hotfix --reason "<text>"]` records
+it. **Never run it yourself** — ask the human to. The approval is spent by the
+commit it authorizes, so a new iteration of the plan needs a new one.
+`--hotfix` skips PLAN and opens EXECUTE directly; it requires a reason, which
+is persisted. The real control is your harness's permission prompt: put
+`cg approve` on the "ask" list (see `adapters/*/PERMISSIONS.md`) so a human
 confirms it out of band, not just in the conversation.
 
 ## Exit codes (schema v3)
@@ -75,5 +78,8 @@ confirms it out of band, not just in the conversation.
 - Language enforcement: artifacts must be in English; `validate` rejects
   Spanish text.
 - Pre-commit hook (`git config core.hooksPath .githooks`) rejects large
-  commits outside an active transaction. Bypass:
+  commits outside an active transaction. Threshold: `hook.file_threshold` in
+  the manifest (strictest across changes) or `CONTEXT_GUARD_FILE_THRESHOLD`,
+  which wins. Files outside `files_in_scope` warn, never block. Bypass:
   `CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...`
+  — recorded in `.context-guard/bypass.log`.

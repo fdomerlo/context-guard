@@ -40,6 +40,19 @@ class TestAgentsMd(unittest.TestCase):
             "AGENTS.md must reference the cg approve step (PLAN.md 0.6 cooperative layer)",
         )
 
+    def test_does_not_describe_approve_as_unshipped(self):
+        """F4 ships the gate. Docs written ahead of it hedged with "until it
+        ships" — left in place, they tell the agent the chat confirmation is
+        still the gate, which is exactly the habit the gate replaces."""
+        for hedge in ("until it ships", "will make this", "will turn this"):
+            self.assertNotIn(
+                hedge, self.text,
+                f"AGENTS.md still describes cg approve as unshipped ('{hedge}')",
+            )
+
+    def test_documents_the_approval_required_exit_code(self):
+        self.assertIn("APPROVAL_REQUIRED", self.text)
+
     def test_documents_phases_directory(self):
         self.assertRegex(
             self.text, r"phases/",

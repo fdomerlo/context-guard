@@ -101,13 +101,17 @@ can cross.**
    it does not check for `[PENDING]`; confirm by eye that both artifacts
    are actually filled in before asking for approval.
 4. Ask the human, in this conversation, to review and confirm.
+5. Ask them to record it — **never run this yourself**:
 
-`cg approve --change <name> [--by <who>] [--hotfix --reason "<text>"]` is the
-command that will turn this into a manifest-recorded, machine-checked gate
-(`EXIT_APPROVAL_REQUIRED` otherwise) — see `AGENTS.md`. Until it ships, the
-human's explicit confirmation in chat is the gate, and the harness's own
-permission prompt on `cg approve`/`cg commit` (configured per `adapters/`) is
-what makes that confirmation hard to skip rather than merely polite.
+```bash
+cg approve --context <path> --change <change-name> --by <who>
+```
+
+Without it, Step 6 fails with `APPROVAL_REQUIRED` (exit 6). The approval is
+spent by the commit it authorizes, so if the plan is revised afterwards the
+human has to approve again. The harness's permission prompt on `cg approve`
+(configured per `adapters/*/PERMISSIONS.md`) is what makes that confirmation
+hard to skip rather than merely polite.
 
 ### Step 6: Commit and close PLAN
 
