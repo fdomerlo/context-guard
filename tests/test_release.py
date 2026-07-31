@@ -2,7 +2,13 @@
 F5 asks for a CHANGELOG entry citing it. Historical 1.x entries are left in
 Spanish — they are a historical record, not a live artifact, the same reason
 past commit messages are not rewritten. Only the new 2.0.0 entry is held to
-the English rule."""
+the English rule.
+
+Also pins the sdist packaging fix found while preparing the release: a
+`uv build` sdist bundled .claude/settings.local.json — untracked, ignored by
+this machine's global gitignore rather than the repo's own, and carrying
+absolute local paths — because hatchling's default sdist selection does not
+consult a global gitignore."""
 
 import os
 import re
@@ -34,6 +40,18 @@ class TestPyprojectVersion(unittest.TestCase):
         match = re.search(r'^description\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "description not declared")
         self.assertIn("transactional memory layer", match.group(1))
+
+
+class TestSdistExcludesLocalTooling(unittest.TestCase):
+    def test_claude_directory_is_excluded_from_the_sdist(self):
+        with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
+            text = f.read()
+        match = re.search(
+            r"\[tool\.hatch\.build\.targets\.sdist\](.*?)(?=^\[|\Z)",
+            text, re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(match, "no [tool.hatch.build.targets.sdist] section declared")
+        self.assertIn(".claude", match.group(1))
 
 
 class TestChangelogEntry(unittest.TestCase):

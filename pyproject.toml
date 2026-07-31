@@ -18,3 +18,12 @@ context-guard-mcp = "context_guard.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["context_guard"]
+
+[tool.hatch.build.targets.sdist]
+# hatchling's default sdist selection does not consult the user's global
+# gitignore (~/.config/git/ignore) — only the repo's own .gitignore and VCS
+# tracking. .claude/settings.local.json is untracked and ignored globally,
+# not locally, so it slipped into a `uv build` sdist carrying this machine's
+# absolute home paths. Excluded explicitly rather than relying on any
+# gitignore to keep local agent tooling out of a published artifact.
+exclude = [".claude/"]
