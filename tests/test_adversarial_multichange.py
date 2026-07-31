@@ -14,13 +14,19 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from context_guard.guard.commands import (
+    cmd_archive,
     cmd_claim,
     cmd_list,
     cmd_new,
     cmd_release,
 )
 from context_guard.guard.manifest import load_manifest
-from context_guard.guard.paths import get_paths, list_changes, resolve_change
+from context_guard.guard.paths import (
+    get_archive_dir,
+    get_paths,
+    list_changes,
+    resolve_change,
+)
 from context_guard.guard.transaction import cmd_begin, cmd_commit
 from context_guard.guard.errors import (
     EXIT_OK,
@@ -195,6 +201,67 @@ class TestChangeIsolation(MultiChangeTestCase):
         self.assertNotEqual(p_alpha["base"], p_zebra["base"])
         self.assertNotEqual(p_alpha["lock"], p_zebra["lock"])
         self.assertNotEqual(p_alpha["write_lock"], p_zebra["write_lock"])
+
+
+class TestArchiveScoping(MultiChangeTestCase):
+    """Archiving is destructive. Anything it touches beyond its own change is
+    unrecoverable work belonging to someone else."""
+
+    def _completable_change(self, name):
+        cmd_new(self.context, name)
+        p = get_paths(self.context, name)
+        for fname in ("objective.md", "snapshot.md"):
+            with open(os.path.join(p["base"], fname), "w") as f:
+                f.write(f"{fname} for {name}.\n")
+        with open(p["tasks"], "w") as f:
+            f.write("- [x] 1.1 Done\n")
+        return p
+
+    def test_archive_is_scoped_to_its_change(self):
+        """Archiving alpha must leave zebra's directory and artifacts intact."""
+        self._completable_change("alpha")
+        p_zebra = self._completable_change("zebra")
+
+        result = cmd_archive(self.context, change="alpha")
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        self.assertTrue(os.path.exists(p_zebra["manifest"]))
+        self.assertTrue(os.path.exists(os.path.join(p_zebra["base"], "objective.md")))
+        self.assertIn("zebra", list_changes(self.context))
+
+    def test_archived_change_leaves_the_active_list(self):
+        """An emptied-but-present directory would keep the change looking
+        active forever, and would make the next resolve_change ambiguous
+        against a change that no longer exists."""
+        self._completable_change("alpha")
+        self._completable_change("zebra")
+
+        cmd_archive(self.context, change="alpha")
+
+        self.assertNotIn("alpha", list_changes(self.context))
+        self.assertEqual(list_changes(self.context), ["zebra"])
+
+    def test_archive_preserves_the_change_name_in_the_archive(self):
+        """An archive that only records a timestamp makes two archived changes
+        indistinguishable after the fact."""
+        self._completable_change("alpha")
+
+        result = cmd_archive(self.context, change="alpha")
+
+        self.assertIn("alpha", result.message)
+        archived = os.listdir(get_archive_dir(self.context))
+        self.assertTrue(any("alpha" in entry for entry in archived), archived)
+
+    def test_archive_does_not_delete_the_archive_directory(self):
+        """Archiving a second change must not wipe the first one's archive."""
+        self._completable_change("alpha")
+        self._completable_change("zebra")
+        cmd_archive(self.context, change="alpha")
+
+        cmd_archive(self.context, change="zebra")
+
+        archived = os.listdir(get_archive_dir(self.context))
+        self.assertEqual(len(archived), 2, archived)
 
 
 if __name__ == "__main__":

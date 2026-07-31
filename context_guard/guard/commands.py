@@ -720,13 +720,15 @@ def cmd_archive(context, change=None):
         if claim_result.exit_code != EXIT_OK:
             return claim_result
 
+        archived_ok = False
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            ctx_name = os.path.basename(os.path.abspath(context))
-            archive_dir = os.path.join(p["archive"], f"{timestamp}_{ctx_name}")
+            # The change name goes in the directory name: without it two
+            # archived changes are indistinguishable after the fact.
+            archive_dir = os.path.join(p["archive"], f"{timestamp}_{p['change']}")
+            os.makedirs(p["archive"], exist_ok=True)
 
-            # Copiar sesión a archive (excluyendo la propia carpeta archive si está dentro de p["base"])
-            shutil.copytree(p["base"], archive_dir, ignore=shutil.ignore_patterns("archive"))
+            shutil.copytree(p["base"], archive_dir)
 
             # Verificar que el archive no esté vacío
             archive_contents = os.listdir(archive_dir)
@@ -736,27 +738,24 @@ def cmd_archive(context, change=None):
                     EXIT_VALIDATION,
                 )
 
-            # Limpiar los archivos de la sesión activa en p["base"] (preservando p["archive"])
-            for item in os.listdir(p["base"]):
-                if item == "archive":
-                    continue
-                item_path = os.path.join(p["base"], item)
-                if os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-                else:
-                    os.remove(item_path)
+            archived_ok = True
+            # Remove the change directory itself, not just its contents: an
+            # emptied-but-present directory keeps the change looking active in
+            # `cg list` and makes the next resolution ambiguous against a
+            # change that no longer exists.
+            shutil.rmtree(p["base"], ignore_errors=True)
 
             return CommandResult(
-                f"SUCCESS|ARCHIVED|{archive_dir}",
+                f"SUCCESS|ARCHIVED|{p['change']}|{archive_dir}",
                 EXIT_OK,
             )
         finally:
-            # Liberar session lock — los archivos de sesión ya fueron borrados,
-            # pero el lockfile podría persistir
-            lock_path = p["lock"]
-            if os.path.exists(lock_path):
+            # Liberar session lock. If the archive succeeded the whole change
+            # directory is gone with it; otherwise the lockfile must not be
+            # left behind holding a change that is still active.
+            if not archived_ok and os.path.exists(p["lock"]):
                 try:
-                    os.remove(lock_path)
+                    os.remove(p["lock"])
                 except FileNotFoundError:
                     pass
 
