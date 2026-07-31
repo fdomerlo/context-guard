@@ -66,6 +66,10 @@ def parse_args(argv=None):
 
     p_release = subparsers.add_parser("release")
     p_release.add_argument("--context", required=True)
+    p_release.add_argument("--agent-id", default=None,
+                           help="Identity of the lock owner (required unless --force)")
+    p_release.add_argument("--force", action="store_true",
+                           help="Release regardless of ownership; recorded in the manifest")
 
     # -- Tareas --
     p_claim_task = subparsers.add_parser("claim-task")
@@ -121,7 +125,7 @@ def dispatch(args):
         "check-lock": lambda: cmd_check_lock(args.context),
         "claim": lambda: cmd_claim(args.context, args.ttl),
         "acquire": lambda: cmd_claim(args.context, args.ttl),  # alias
-        "release": lambda: cmd_release(args.context),
+        "release": lambda: cmd_release(args.context, args.agent_id, args.force),
         "claim-task": lambda: cmd_claim_task(
             args.context, args.task_id, args.agent_id,
         ),

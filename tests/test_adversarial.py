@@ -28,11 +28,18 @@ from context_guard.guard.locking import (
 )
 from context_guard.guard.paths import get_paths
 from context_guard.guard.transaction import cmd_begin
+from context_guard.guard.commands import (
+    cmd_claim,
+    cmd_claim_task,
+    cmd_release,
+    cmd_release_task,
+)
 from context_guard.guard import errors
 from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_BAD_TRANSITION,
     EXIT_LOCK_HELD,
+    EXIT_VALIDATION,
 )
 
 
@@ -301,6 +308,88 @@ class TestWriteLockTheft(unittest.TestCase):
 
         self.assertEqual(with_write_lock(self.context, lambda: "recovered"),
                          "recovered")
+
+
+class TestReleaseWithoutOwnership(unittest.TestCase):
+    """1.2.4 — releasing someone else's claim must require saying who you are.
+
+    The attack: agent B releases agent A's task simply by omitting
+    --agent-id. Ownership was only checked when an agent_id happened to be
+    supplied, so the check was opt-in — and the agent with something to gain
+    by skipping it is exactly the one who will. Anonymous release is now an
+    error; --force still exists, but it is explicit and recorded.
+    """
+
+    def setUp(self):
+        self._orig_cwd = os.getcwd()
+        self._tmpdir = tempfile.mkdtemp(prefix="guard_adv_own_")
+        os.chdir(self._tmpdir)
+        self.context = self._tmpdir
+        cmd_claim(self.context, ttl=1800)
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_anonymous_task_release_is_rejected(self):
+        """The bypass itself: no agent_id, no release."""
+        cmd_claim_task(self.context, "task-1", agent_id="agent-A")
+
+        result = cmd_release_task(self.context, "task-1")
+
+        self.assertEqual(result.exit_code, EXIT_VALIDATION)
+        self.assertIn("FAIL|AGENT_ID_REQUIRED", result.message)
+
+    def test_anonymous_release_leaves_the_claim_intact(self):
+        """A rejected release must not half-apply."""
+        cmd_claim_task(self.context, "task-1", agent_id="agent-A")
+
+        cmd_release_task(self.context, "task-1")
+
+        m = load_manifest(self.context)
+        self.assertEqual(m["task_claims"]["task-1"]["status"], "claimed")
+        self.assertEqual(m["task_claims"]["task-1"]["agent_id"], "agent-A")
+
+    def test_forced_task_release_is_recorded(self):
+        """--force stays available for real deadlocks, but leaves a trace of
+        who forced what and when."""
+        cmd_claim_task(self.context, "task-1", agent_id="agent-A")
+
+        result = cmd_release_task(self.context, "task-1", force=True)
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        m = load_manifest(self.context)
+        claim = m["task_claims"]["task-1"]
+        self.assertTrue(claim.get("force_released"))
+        self.assertIn("released_at", claim)
+
+    def test_anonymous_session_release_is_rejected(self):
+        """The session lock follows the same rule as task claims — otherwise
+        the weaker of the two is the one an agent will reach for."""
+        result = cmd_release(self.context)
+
+        self.assertEqual(result.exit_code, EXIT_VALIDATION)
+        self.assertIn("FAIL|AGENT_ID_REQUIRED", result.message)
+
+    def test_session_release_by_wrong_owner_is_rejected(self):
+        m = load_manifest(self.context)
+        owner = m["lock"]["acquired_by"]
+        self.assertIsNotNone(owner)
+
+        result = cmd_release(self.context, agent_id="somebody-else")
+
+        self.assertEqual(result.exit_code, EXIT_LOCK_HELD)
+        self.assertIn("FAIL|OWNERSHIP_MISMATCH", result.message)
+        self.assertTrue(os.path.exists(get_paths(self.context)["lock"]))
+
+    def test_session_release_by_true_owner_succeeds(self):
+        m = load_manifest(self.context)
+        owner = m["lock"]["acquired_by"]
+
+        result = cmd_release(self.context, agent_id=owner)
+
+        self.assertEqual(result.exit_code, EXIT_OK)
+        self.assertIn("SUCCESS|LOCK_RELEASED", result.message)
 
 
 if __name__ == "__main__":

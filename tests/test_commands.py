@@ -18,7 +18,12 @@ from context_guard.guard.commands import (
 )
 from context_guard.guard.manifest import save_manifest, load_manifest
 from context_guard.guard.paths import get_paths
-from context_guard.guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_GENERIC
+from context_guard.guard.errors import (
+    EXIT_OK,
+    EXIT_LOCK_HELD,
+    EXIT_GENERIC,
+    EXIT_VALIDATION,
+)
 
 
 class TestCmdCheckLock(unittest.TestCase):
@@ -121,10 +126,15 @@ class TestCmdClaimReleaseCycle(unittest.TestCase):
         self.assertEqual(result.exit_code, EXIT_LOCK_HELD)
         self.assertIn("FAIL|LOCK_HELD", result.message)
 
-    def test_release_success(self):
-        """cmd_release successfully releases a held lock."""
+    def _claim_and_get_owner(self):
+        """Claim the session lock and return the agent_id that now owns it."""
         cmd_claim(self.context, ttl=1800)
-        result = cmd_release(self.context)
+        return load_manifest(self.context)["lock"]["acquired_by"]
+
+    def test_release_success(self):
+        """cmd_release successfully releases a lock held by the same agent."""
+        owner = self._claim_and_get_owner()
+        result = cmd_release(self.context, agent_id=owner)
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|LOCK_RELEASED", result.message)
 
@@ -134,16 +144,25 @@ class TestCmdClaimReleaseCycle(unittest.TestCase):
 
     def test_release_then_claim_again(self):
         """After release, a new claim should succeed."""
-        cmd_claim(self.context, ttl=1800)
-        cmd_release(self.context)
+        owner = self._claim_and_get_owner()
+        cmd_release(self.context, agent_id=owner)
         result = cmd_claim(self.context, ttl=1800)
         self.assertEqual(result.exit_code, EXIT_OK)
 
     def test_release_when_no_session(self):
-        """cmd_release on non-existent session still succeeds gracefully."""
-        result = cmd_release(self.context)
+        """cmd_release on a non-existent session succeeds for the owner path:
+        there is no lock metadata to contradict the caller."""
+        result = cmd_release(self.context, agent_id="agent-A")
         self.assertEqual(result.exit_code, EXIT_OK)
         self.assertIn("SUCCESS|LOCK_RELEASED", result.message)
+
+    def test_release_requires_identity(self):
+        """An anonymous release is refused — ownership that is only checked
+        when the caller volunteers its id is not ownership."""
+        self._claim_and_get_owner()
+        result = cmd_release(self.context)
+        self.assertEqual(result.exit_code, EXIT_VALIDATION)
+        self.assertIn("FAIL|AGENT_ID_REQUIRED", result.message)
 
 
 class TestCmdTaskClaimRelease(unittest.TestCase):
@@ -205,7 +224,8 @@ class TestCmdTaskClaimRelease(unittest.TestCase):
     def test_claim_task_no_session_fails(self):
         """cmd_claim_task fails when no session manifest exists."""
         # Release and clean up the session
-        cmd_release(self.context)
+        owner = load_manifest(self.context)["lock"]["acquired_by"]
+        cmd_release(self.context, agent_id=owner)
         p = get_paths(self.context)
         if os.path.exists(p["manifest"]):
             os.remove(p["manifest"])

@@ -54,15 +54,35 @@ def cmd_claim(context, ttl):
     return with_write_lock(context, _do)
 
 
-def cmd_release(context):
-    """Libera el lock de sesión."""
+def cmd_release(context, agent_id=None, force=False):
+    """Libera el lock de sesión, validando ownership.
+
+    An anonymous release is an error: ownership that is only checked when the
+    caller volunteers its identity is not ownership at all. `force` remains
+    available for genuine deadlocks and is recorded in the manifest.
+    """
+    if not agent_id and not force:
+        return CommandResult(
+            "FAIL|AGENT_ID_REQUIRED|pass --agent-id, or --force to override",
+            EXIT_VALIDATION,
+        )
+
     def _do():
         p = get_paths(context)
         m = load_manifest(context)
         if m and "lock" in m:
+            owner = m["lock"].get("acquired_by")
+            if owner and agent_id and not force and owner != agent_id:
+                return CommandResult(
+                    f"FAIL|OWNERSHIP_MISMATCH|session|owner={owner}",
+                    EXIT_LOCK_HELD,
+                )
             m["lock"]["held"] = False
             m["lock"]["acquired_at"] = None
             m["lock"]["acquired_by"] = None
+            if force:
+                m["lock"]["force_released_at"] = datetime.now().isoformat()
+                m["lock"]["force_released_by"] = agent_id
             save_manifest(context, m)
         if os.path.exists(p["lock"]):
             os.remove(p["lock"])
@@ -101,20 +121,31 @@ def cmd_claim_task(context, task_id, agent_id=None):
 
 
 def cmd_release_task(context, task_id, agent_id=None, force=False):
-    """Libera una tarea. Si se pasa agent_id, valida ownership (a menos que
-    force=True)."""
+    """Libera una tarea, validando ownership.
+
+    Releasing without declaring an identity is an error: an ownership check
+    that only runs when the caller volunteers its agent_id is opt-in, and the
+    agent with something to gain by skipping it is the one who will. `force`
+    remains available and is recorded on the claim.
+    """
     def _do():
         m = load_manifest(context)
         if not m:
             return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
         tasks = m.get("task_claims", {})
         task = tasks.get(task_id)
+        # Checked before identity: you cannot violate the ownership of a claim
+        # that does not exist, and the caller deserves the more specific error.
         if not task or task["status"] != "claimed":
             return CommandResult(
                 f"FAIL|TASK_NOT_CLAIMED|{task_id}",
                 EXIT_LOCK_HELD,
             )
-        # Ownership validation
+        if not agent_id and not force:
+            return CommandResult(
+                "FAIL|AGENT_ID_REQUIRED|pass --agent-id, or --force to override",
+                EXIT_VALIDATION,
+            )
         if agent_id and not force and task["agent_id"] != agent_id:
             return CommandResult(
                 f"FAIL|OWNERSHIP_MISMATCH|{task_id}|owner={task['agent_id']}",
@@ -122,6 +153,9 @@ def cmd_release_task(context, task_id, agent_id=None, force=False):
             )
         task["status"] = "done"
         task["released_at"] = datetime.now().isoformat()
+        if force:
+            task["force_released"] = True
+            task["force_released_by"] = agent_id
         save_manifest(context, m)
         return CommandResult(f"SUCCESS|TASK_RELEASED|{task_id}", EXIT_OK)
     return with_write_lock(context, _do)
