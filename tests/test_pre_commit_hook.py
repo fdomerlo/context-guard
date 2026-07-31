@@ -94,6 +94,7 @@ class HookTestCase(unittest.TestCase):
         m[key] = value
         save_manifest(self.repo, m, change)
 
+
 class TestHookBlocksUnprotocolledWork(HookTestCase):
     def test_large_commit_without_a_session_is_rejected(self):
         """F4 acceptance criterion. The perimeter check: no context-guard state
@@ -119,6 +120,7 @@ class TestHookBlocksUnprotocolledWork(HookTestCase):
         self.stage("a.py", "b.py", "c.py", "d.py")
 
         self.assertEqual(self.run_hook().returncode, 1)
+
 
 class TestBypassIsAuditedNotSilent(HookTestCase):
     """F4 acceptance criterion, and 0.4's "mejor idea de gobernanza": the door
@@ -168,6 +170,7 @@ class TestBypassIsAuditedNotSilent(HookTestCase):
         self.assertIn("second", log)
         self.assertEqual(len(log.strip().splitlines()), 2)
 
+
 class TestHookSpeaksEnglish(HookTestCase):
     """CLAUDE.md rule 4 / PLAN.md 0.2: everything a machine or a stranger reads
     is in English. The hook's output is the most user-facing string we ship."""
@@ -189,6 +192,65 @@ class TestHookSpeaksEnglish(HookTestCase):
             source = f.read()
         for term in ("Bloquea", "iniciada", "archivos", "Utiliza", "Excepción"):
             self.assertNotIn(term, source)
+
+
+class TestHookSeesTheMultiChangeLayout(HookTestCase):
+    """F2 moved every manifest to .context-guard/changes/{name}/. The hook was
+    still reading .context-guard/manifest.json, which now never exists — so it
+    rejected every large commit no matter how correctly the agent behaved."""
+
+    def test_open_transaction_in_a_change_counts_as_engaged(self):
+        cmd_new(self.repo, "alpha")  # leaves a PLAN transaction in progress
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        res = self.run_hook()
+
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+    def test_completed_phase_in_a_change_counts_as_engaged(self):
+        self.executing_change("alpha")
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook().returncode, 0)
+
+    def test_one_engaged_change_covers_the_commit(self):
+        """A repo with several changes only needs one of them to be engaged:
+        the staged files belong to whichever change is doing the work, and the
+        hook cannot tell which without guessing."""
+        self.idle_change("alpha")
+        self.executing_change("beta")
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook().returncode, 0)
+
+    def test_legacy_flat_layout_still_recognised(self):
+        """1.x repos that have not run `cg migrate` yet must not be blocked by
+        an upgrade of the hook alone."""
+        base = os.path.join(self.repo, ".context-guard")
+        os.makedirs(base, exist_ok=True)
+        with open(os.path.join(base, "manifest.json"), "w", encoding="utf-8") as f:
+            f.write('{"completed_phases": ["PLAN"], "transaction": {"txn_status": "idle"}}')
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook().returncode, 0)
+
+
+class TestHookFailsOpenOnBrokenState(HookTestCase):
+    """A corrupt manifest is a context-guard problem. Making it a git problem
+    too would leave the user unable to commit the fix."""
+
+    def test_corrupt_manifest_does_not_crash_the_hook(self):
+        self.idle_change("alpha")
+        p = get_paths(self.repo, "alpha")
+        with open(p["manifest"], "w", encoding="utf-8") as f:
+            f.write("{not json")
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        res = self.run_hook()
+
+        self.assertIn(res.returncode, (0, 1), res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+
 
 
 if __name__ == "__main__":

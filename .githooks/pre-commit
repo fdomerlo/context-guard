@@ -27,23 +27,58 @@ def staged_files():
     return [f for f in out.splitlines() if f.strip()]
 
 
-def load_manifest(root):
-    path = os.path.join(root, ".context-guard", "manifest.json")
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return None
+def manifest_paths(root):
+    """Every manifest in the context, newest layout first.
+
+    Since the multi-change refactor state lives in
+    .context-guard/changes/{name}/manifest.json. The flat path is still read so
+    a 1.x repo that has not run `cg migrate` yet is not blocked by an upgrade
+    of the hook alone.
+    """
+    base = os.path.join(root, ".context-guard")
+    paths = []
+    changes_dir = os.path.join(base, "changes")
+    if os.path.isdir(changes_dir):
+        for entry in sorted(os.listdir(changes_dir)):
+            if entry == "archive":
+                continue
+            candidate = os.path.join(changes_dir, entry, "manifest.json")
+            if os.path.exists(candidate):
+                paths.append(candidate)
+    flat = os.path.join(base, "manifest.json")
+    if os.path.exists(flat):
+        paths.append(flat)
+    return paths
 
 
-def protocol_engaged(manifest):
-    if manifest is None:
-        return False
-    completed = manifest.get("completed_phases", [])
-    txn = manifest.get("transaction", {})
-    return bool(completed) or txn.get("txn_status") == "in_progress"
+def load_manifests(root):
+    """Parse every manifest, skipping the ones we cannot read.
+
+    A corrupt manifest is a context-guard problem; letting it raise here would
+    make it a git problem too and leave the user unable to commit the fix.
+    """
+    manifests = []
+    for path in manifest_paths(root):
+        try:
+            with open(path) as f:
+                manifests.append(json.load(f))
+        except (OSError, ValueError):
+            continue
+    return manifests
+
+
+def protocol_engaged(manifests):
+    """True if any change is doing the work.
+
+    One engaged change is enough: the staged files belong to whichever change
+    is active, and the hook cannot tell which without guessing — the
+    alphabetical guess PLAN.md 1.3 forbids by name.
+    """
+    for manifest in manifests:
+        txn = manifest.get("transaction", {})
+        if manifest.get("completed_phases") or txn.get("txn_status") == "in_progress":
+            return True
+    return False
 
 
 def log_bypass(root, files, reason):
@@ -60,8 +95,8 @@ def main():
     if len(files) <= FILE_THRESHOLD:
         sys.exit(0)
 
-    manifest = load_manifest(root)
-    if protocol_engaged(manifest):
+    manifests = load_manifests(root)
+    if protocol_engaged(manifests):
         sys.exit(0)
 
     if os.environ.get("CONTEXT_GUARD_BYPASS") == "1":
