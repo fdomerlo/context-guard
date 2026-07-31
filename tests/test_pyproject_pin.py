@@ -31,6 +31,13 @@ class TestPyprojectPin(unittest.TestCase):
         self.assertIsNotNone(match, "requires-python not declared")
         self.assertEqual(match.group(1), ">=3.10")
 
+    def test_cg_short_entrypoint_is_declared(self):
+        """PLAN.md 0.1: 'cg' is the CLI binary name docs and adapters use,
+        alongside the long 'context-guard' entry point."""
+        match = re.search(r'^cg\s*=\s*"([^"]*)"', self.text, re.MULTILINE)
+        self.assertIsNotNone(match, "cg short entrypoint not declared")
+        self.assertEqual(match.group(1), "context_guard.guard.cli:main")
+
 
 if __name__ == "__main__":
     unittest.main()

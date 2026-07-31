@@ -12,6 +12,7 @@ dependencies = ["mcp>=1.0.0,<2.0.0"]
 
 [project.scripts]
 context-guard = "context_guard.guard.cli:main"
+cg = "context_guard.guard.cli:main"
 context-guard-mcp = "context_guard.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
