@@ -20,7 +20,12 @@ from context_guard.guard.manifest import (
     load_manifest,
     save_manifest,
 )
-from context_guard.guard.locking import acquire
+from context_guard.guard.locking import (
+    acquire,
+    with_write_lock,
+    _is_write_lock_stale,
+    WRITE_LOCK_MAX_AGE,
+)
 from context_guard.guard.paths import get_paths
 from context_guard.guard.transaction import cmd_begin
 from context_guard.guard import errors
@@ -207,6 +212,95 @@ class TestOrphanSessionLockDeadlock(unittest.TestCase):
         self.assertTrue(m["lock"]["held"])
         self.assertIsNotNone(m["lock"]["acquired_at"])
         self.assertIsNotNone(m["lock"]["acquired_by"])
+
+
+class TestWriteLockTheft(unittest.TestCase):
+    """1.2.2 — the write mutex must not be stolen from a process that is alive.
+
+    The attack is a slow peer. The write lock serializes read-modify-write on
+    the manifest; before this fix, age alone declared a lock stale. Any
+    operation that legitimately took longer than WRITE_LOCK_MAX_AGE had its
+    mutex torn away mid-flight, and two processes then read-modify-wrote the
+    same manifest concurrently — silently losing whichever write landed first.
+    A liveness check is what makes the mutex a mutex.
+
+    The hard cap remains, because a PID can be reused by an unrelated process
+    and liveness alone would then deadlock just as permanently.
+    """
+
+    def setUp(self):
+        self._orig_cwd = os.getcwd()
+        self._tmpdir = tempfile.mkdtemp(prefix="guard_adv_wlock_")
+        os.chdir(self._tmpdir)
+        self.context = self._tmpdir
+
+    def tearDown(self):
+        os.chdir(self._orig_cwd)
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _lockfile(self, pid, age_seconds):
+        lockfile = os.path.join(self._tmpdir, "test.lock")
+        with open(lockfile, "w") as f:
+            f.write(f"{pid}\n")
+            f.write(f"{time.time() - age_seconds}\n")
+        return lockfile
+
+    def test_live_pid_past_max_age_is_not_stale(self):
+        """The core theft case: our own PID is alive, the lock is older than
+        WRITE_LOCK_MAX_AGE, and it must still be respected."""
+        lockfile = self._lockfile(os.getpid(), WRITE_LOCK_MAX_AGE + 70)
+
+        self.assertFalse(_is_write_lock_stale(lockfile))
+
+    def test_dead_pid_is_stale_regardless_of_age(self):
+        """Liveness is the primary signal: a dead owner frees the lock at once."""
+        lockfile = self._lockfile(99999999, 0)
+
+        self.assertTrue(_is_write_lock_stale(lockfile))
+
+    def test_live_pid_past_hard_cap_is_stale(self):
+        """PID reuse protection: beyond 10x the max age we stop believing the
+        PID belongs to the original owner, or a recycled PID deadlocks us."""
+        lockfile = self._lockfile(os.getpid(), WRITE_LOCK_MAX_AGE * 10 + 60)
+
+        self.assertTrue(_is_write_lock_stale(lockfile))
+
+    def test_live_pid_recent_is_not_stale(self):
+        lockfile = self._lockfile(os.getpid(), 0)
+
+        self.assertFalse(_is_write_lock_stale(lockfile))
+
+    def test_unparseable_lockfile_is_stale(self):
+        """An unreadable lock names no owner to protect."""
+        lockfile = os.path.join(self._tmpdir, "test.lock")
+        with open(lockfile, "w") as f:
+            f.write("garbage\n")
+
+        self.assertTrue(_is_write_lock_stale(lockfile))
+
+    def test_with_write_lock_does_not_steal_from_live_peer(self):
+        """End to end: a live peer holding an aged write lock makes us wait and
+        time out, rather than silently running concurrently with it."""
+        p = get_paths(self.context)
+        os.makedirs(p["base"], exist_ok=True)
+        with open(p["write_lock"], "w") as f:
+            f.write(f"{os.getpid()}\n")
+            f.write(f"{time.time() - (WRITE_LOCK_MAX_AGE + 70)}\n")
+
+        with self.assertRaises(TimeoutError):
+            with_write_lock(self.context, lambda: "stolen",
+                            timeout=0.1, retry_interval=0.02)
+
+    def test_with_write_lock_recovers_from_dead_peer(self):
+        """The fix must not strand work behind a crashed peer."""
+        p = get_paths(self.context)
+        os.makedirs(p["base"], exist_ok=True)
+        with open(p["write_lock"], "w") as f:
+            f.write("99999999\n")
+            f.write(f"{time.time()}\n")
+
+        self.assertEqual(with_write_lock(self.context, lambda: "recovered"),
+                         "recovered")
 
 
 if __name__ == "__main__":

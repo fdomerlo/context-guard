@@ -10,7 +10,14 @@ import unittest
 # Allow importing the context_guard package
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from context_guard.guard.locking import with_write_lock, try_create_lockfile, acquire, _is_write_lock_stale
+from context_guard.guard.locking import (
+    with_write_lock,
+    try_create_lockfile,
+    acquire,
+    _is_write_lock_stale,
+    WRITE_LOCK_MAX_AGE,
+    WRITE_LOCK_HARD_CAP_FACTOR,
+)
 from context_guard.guard.manifest import save_manifest, load_manifest
 from context_guard.guard.paths import get_paths
 from context_guard.guard.errors import EXIT_OK, EXIT_LOCK_HELD, EXIT_LOCK_CONTENDED
@@ -65,15 +72,19 @@ class TestWithWriteLock(unittest.TestCase):
         self.assertEqual(result, "recovered")
         self.assertFalse(os.path.exists(p["write_lock"]))
 
-    def test_stale_lock_recovery_expired(self):
-        """with_write_lock recovers stale lock that is too old."""
+    def test_stale_lock_recovery_past_hard_cap(self):
+        """with_write_lock recovers a lock held past the PID-reuse hard cap.
+
+        A live PID no longer frees the lock on age alone (see
+        _is_write_lock_stale), so recovery only kicks in beyond the hard cap.
+        """
         p = get_paths(self.context)
         os.makedirs(os.path.dirname(p["write_lock"]), exist_ok=True)
 
-        # Create a lockfile with current PID but very old timestamp
+        # Current PID, aged past WRITE_LOCK_MAX_AGE * WRITE_LOCK_HARD_CAP_FACTOR
         with open(p["write_lock"], "w") as f:
             f.write(f"{os.getpid()}\n")
-            f.write(f"{time.time() - 100}\n")  # 100 seconds ago
+            f.write(f"{time.time() - (WRITE_LOCK_MAX_AGE * WRITE_LOCK_HARD_CAP_FACTOR + 60)}\n")
 
         result = with_write_lock(self.context, lambda: "recovered")
         self.assertEqual(result, "recovered")
@@ -211,12 +222,24 @@ class TestIsWriteLockStale(unittest.TestCase):
             f.write(f"{time.time()}\n")
         self.assertFalse(_is_write_lock_stale(lockfile))
 
-    def test_old_timestamp_is_stale(self):
-        """A lockfile with a live PID but very old timestamp is stale."""
+    def test_old_timestamp_with_live_pid_is_not_stale(self):
+        """A live PID keeps its lock even once past WRITE_LOCK_MAX_AGE.
+
+        Age alone used to declare staleness, which let a slow-but-healthy
+        process have its mutex torn away mid-write.
+        """
         lockfile = os.path.join(self._tmpdir, "test.lock")
         with open(lockfile, "w") as f:
             f.write(f"{os.getpid()}\n")
             f.write(f"{time.time() - 100}\n")
+        self.assertFalse(_is_write_lock_stale(lockfile))
+
+    def test_old_timestamp_past_hard_cap_is_stale(self):
+        """Past the hard cap the PID is no longer trusted (PID reuse)."""
+        lockfile = os.path.join(self._tmpdir, "test.lock")
+        with open(lockfile, "w") as f:
+            f.write(f"{os.getpid()}\n")
+            f.write(f"{time.time() - (WRITE_LOCK_MAX_AGE * WRITE_LOCK_HARD_CAP_FACTOR + 60)}\n")
         self.assertTrue(_is_write_lock_stale(lockfile))
 
     def test_unreadable_file_is_stale(self):

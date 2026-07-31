@@ -25,10 +25,21 @@ from .errors import (
 # ---------------------------------------------------------------------------
 
 WRITE_LOCK_MAX_AGE = 30  # seconds before a write lock is considered stale
+WRITE_LOCK_HARD_CAP_FACTOR = 10  # age past which we stop trusting the PID
 
 
 def _is_write_lock_stale(lockfile):
     """Detecta si un .write.lock es huérfano (proceso muerto o demasiado viejo).
+
+    Liveness is the primary signal. Age alone must NOT declare a lock stale:
+    the write lock serializes read-modify-write on the manifest, and tearing
+    it away from a process that is still running lets two writers race and
+    silently lose one of the writes.
+
+    The one exception is the hard cap. A PID can be reused by an unrelated
+    process, and trusting liveness forever would turn a recycled PID into a
+    permanent deadlock, so past WRITE_LOCK_HARD_CAP_FACTOR x WRITE_LOCK_MAX_AGE
+    we stop believing the PID belongs to the original owner.
 
     Returns:
         True si el lock es stale y puede ser removido de forma segura.
@@ -36,16 +47,23 @@ def _is_write_lock_stale(lockfile):
     try:
         with open(lockfile, "r") as f:
             lines = f.readlines()
+
+        pid_alive = False
         if len(lines) >= 1:
             pid = int(lines[0].strip())
             try:
                 os.kill(pid, 0)
+                pid_alive = True
             except OSError:
                 return True  # proceso muerto, lock huérfano
+
         if len(lines) >= 2:
             created = float(lines[1].strip())
-            if time.time() - created > WRITE_LOCK_MAX_AGE:
-                return True  # demasiado viejo
+            age = time.time() - created
+            if pid_alive:
+                return age > WRITE_LOCK_MAX_AGE * WRITE_LOCK_HARD_CAP_FACTOR
+            if age > WRITE_LOCK_MAX_AGE:
+                return True
     except (ValueError, IOError):
         return True  # no se puede leer, asumir stale
     return False
