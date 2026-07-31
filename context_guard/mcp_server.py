@@ -49,7 +49,7 @@ def _format_result(fn, *args, **kwargs) -> str:
 
 
 @mcp.tool()
-def begin_transaction(context: str, phase: str) -> str:
+def begin_transaction(context: str, phase: str, change: str | None = None) -> str:
     """Start a transactional phase in the 3-state pipeline.
 
     The pipeline enforces strict ordering: PLAN -> EXECUTE -> VERIFY -> ARCHIVE.
@@ -70,15 +70,19 @@ def begin_transaction(context: str, phase: str) -> str:
                  (e.g. /home/user/workspace/my-project).
         phase: One of 'PLAN', 'EXECUTE', or 'VERIFY'. Any other value is rejected.
 
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
     Returns:
         '[0] SUCCESS|BEGIN|phase={phase}' on success, or an error string with
         a non-zero exit code.
     """
-    return _format_result(cmd_begin, context, phase)
+    return _format_result(cmd_begin, context, phase, change=change)
 
 
 @mcp.tool()
-def commit_transaction(context: str, next_phase: str) -> str:
+def commit_transaction(context: str, next_phase: str, change: str | None = None) -> str:
     """Finalize the active phase and advance the pipeline to the next state.
 
     Validates that the transition is legal according to the DAG:
@@ -99,15 +103,19 @@ def commit_transaction(context: str, next_phase: str) -> str:
         next_phase: The phase to advance to. Must be the legal successor of the
                     currently active phase ('EXECUTE', 'VERIFY', or 'ARCHIVE').
 
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
     Returns:
         '[0] SUCCESS|COMMIT|lock_phase={next_phase}' on success, or an error
         string with a non-zero exit code.
     """
-    return _format_result(cmd_commit, context, next_phase)
+    return _format_result(cmd_commit, context, next_phase, change=change)
 
 
 @mcp.tool()
-def rollback_transaction(context: str) -> str:
+def rollback_transaction(context: str, change: str | None = None) -> str:
     """Abort the active transaction and restore the pre-begin manifest snapshot.
 
     Use this when a phase fails (e.g. tests don't pass during VERIFY, or an
@@ -119,15 +127,19 @@ def rollback_transaction(context: str) -> str:
         context: ABSOLUTE PATH to the current project directory
                  (e.g. /home/user/workspace/my-project).
 
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
     Returns:
         '[0] SUCCESS|ROLLBACK|restored' on success, or an error string with a
         non-zero exit code if no transaction is in progress.
     """
-    return _format_result(cmd_rollback, context)
+    return _format_result(cmd_rollback, context, change=change)
 
 
 @mcp.tool()
-def save_checkpoint(context: str, summary: str) -> str:
+def save_checkpoint(context: str, summary: str, change: str | None = None) -> str:
     """Persist a session summary as a lightweight checkpoint in manifest.json.
 
     Checkpoints serve as warm-boot state: if the agent loses context (e.g.
@@ -145,11 +157,15 @@ def save_checkpoint(context: str, summary: str) -> str:
                  characters (~500 tokens). Exceeding the limit returns
                  EXIT_VALIDATION.
 
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
     Returns:
         '[0] SUCCESS|CHECKPOINT_SAVED' on success, or an error string with a
         non-zero exit code.
     """
-    return _format_result(cmd_checkpoint, context, summary)
+    return _format_result(cmd_checkpoint, context, summary, change=change)
 
 
 def main():

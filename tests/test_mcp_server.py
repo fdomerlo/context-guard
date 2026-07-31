@@ -17,6 +17,7 @@ from context_guard.mcp_server import (
 )
 from context_guard.guard.manifest import load_manifest
 from context_guard.guard.paths import get_paths
+from context_guard.guard.commands import cmd_new
 from context_guard.guard.errors import EXIT_VALIDATION
 
 
@@ -64,6 +65,34 @@ class TestMCPServer(unittest.TestCase):
 
         m = load_manifest(self.context)
         self.assertEqual(m["transaction"]["txn_status"], "idle")
+
+    def test_tools_operate_on_an_explicit_change(self):
+        """The MCP transport must be able to name a change, or it is unusable
+        on any project with more than one in flight."""
+        cmd_new(self.context, "alpha")
+        cmd_new(self.context, "zebra")
+
+        res = begin_transaction(self.context, "PLAN", change="zebra")
+
+        self.assertTrue(res.startswith("[0] SUCCESS|BEGIN"), res)
+        self.assertEqual(
+            load_manifest(self.context, "zebra")["transaction"]["txn_status"],
+            "in_progress")
+        self.assertEqual(
+            load_manifest(self.context, "alpha")["transaction"]["txn_status"],
+            "idle")
+
+    def test_ambiguous_change_is_reported_not_guessed(self):
+        """Omitting the change with several active must surface the error
+        through the MCP transport too, not resolve to one of them."""
+        cmd_new(self.context, "alpha")
+        cmd_new(self.context, "zebra")
+
+        res = begin_transaction(self.context, "PLAN")
+
+        self.assertIn("AMBIGUOUS_CHANGE", res)
+        self.assertIn("alpha", res)
+        self.assertIn("zebra", res)
 
     def test_invalid_phase_mcp_tool(self):
         """Test error handling in MCP tools returns formatted string with exit code."""
