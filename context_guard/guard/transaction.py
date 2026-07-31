@@ -74,6 +74,16 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL):
         if not m:
             m = create_initial_manifest(context)
 
+        # DAG enforcement: the manifest decides which phase may start, not the
+        # caller. Without this, the pipeline was only checked on commit — and
+        # an agent that never commits was never stopped.
+        lock_phase = m.get("lock_phase", "PLAN")
+        if phase != lock_phase:
+            return CommandResult(
+                f"FAIL|PHASE_NOT_AUTHORIZED|requested={phase}|lock_phase={lock_phase}",
+                EXIT_BAD_TRANSITION,
+            )
+
         txn = m.setdefault("transaction", {})
         status = txn.get("txn_status", "idle")
         started_at = txn.get("txn_started_at", None)
