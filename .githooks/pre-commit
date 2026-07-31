@@ -10,8 +10,9 @@ import subprocess
 import sys
 from datetime import datetime
 
-FILE_THRESHOLD = int(os.environ.get("CONTEXT_GUARD_FILE_THRESHOLD", "2"))
+DEFAULT_FILE_THRESHOLD = 2
 BYPASS_LOG = ".context-guard/bypass.log"
+GUARD_DIR = ".context-guard"
 
 
 def repo_root():
@@ -67,6 +68,69 @@ def load_manifests(root):
     return manifests
 
 
+def file_threshold(manifests):
+    """How many staged files are allowed outside the protocol.
+
+    Precedence: the environment wins, then the manifests, then the default. The
+    env var is the per-invocation escape hatch, so committed configuration must
+    not be able to override it.
+
+    Across changes the strictest configured value wins. Picking "the first one"
+    would resolve a repo-wide policy by directory order; the minimum is
+    order-independent and errs toward asking rather than toward silence.
+    """
+    from_env = os.environ.get("CONTEXT_GUARD_FILE_THRESHOLD")
+    if from_env is not None:
+        try:
+            return int(from_env)
+        except ValueError:
+            pass
+
+    configured = []
+    for manifest in manifests:
+        value = manifest.get("hook", {}).get("file_threshold")
+        try:
+            configured.append(int(value))
+        except (TypeError, ValueError):
+            # A typo in the manifest must not silently disable the hook.
+            continue
+    return min(configured) if configured else DEFAULT_FILE_THRESHOLD
+
+
+def out_of_scope(manifests, files):
+    """Staged files that no executing change declared as its scope.
+
+    Advisory only, per PLAN.md F4. Blocking here would put the hook in the way
+    of the user's own flow on a field the agent fills in by hand, and a soft
+    check that hardens into a blocker is how you end up with an agent that
+    cannot commit.
+
+    Only changes actually in EXECUTE are considered: in PLAN the scope has not
+    been decided yet, so every file would be "out" of it and the warning would
+    be noise from the first commit.
+    """
+    scopes = []
+    for manifest in manifests:
+        if manifest.get("lock_phase") != "EXECUTE":
+            continue
+        scopes.extend(manifest.get("files_in_scope") or [])
+    if not scopes:
+        # Not declared is not the same as "nothing is allowed" — the manifest
+        # ships with files_in_scope empty.
+        return []
+
+    stray = []
+    for path in files:
+        # The guard's own state is written by every phase; warning about it on
+        # every commit is how a soft check gets tuned out.
+        if path == GUARD_DIR or path.startswith(GUARD_DIR + "/"):
+            continue
+        if any(path == s or path.startswith(s.rstrip("/") + "/") for s in scopes):
+            continue
+        stray.append(path)
+    return stray
+
+
 def protocol_engaged(manifests):
     """True if any change is doing the work.
 
@@ -91,11 +155,23 @@ def log_bypass(root, files, reason):
 def main():
     root = repo_root()
     files = staged_files()
+    manifests = load_manifests(root)
 
-    if len(files) <= FILE_THRESHOLD:
+    # Advisory, and checked on every commit regardless of size: a one-file
+    # change outside the declared scope is just as worth mentioning, and this
+    # branch never affects the exit code.
+    stray = out_of_scope(manifests, files)
+    if stray:
+        print(
+            f"[context-guard] WARN: {len(stray)} staged file(s) outside "
+            f"files_in_scope: {', '.join(stray)}",
+            file=sys.stderr,
+        )
+
+    threshold = file_threshold(manifests)
+    if len(files) <= threshold:
         sys.exit(0)
 
-    manifests = load_manifests(root)
     if protocol_engaged(manifests):
         sys.exit(0)
 
@@ -107,7 +183,7 @@ def main():
 
     print(
         f"[context-guard] COMMIT REJECTED: {len(files)} files staged "
-        f"(threshold={FILE_THRESHOLD}) with no phase engaged.\n"
+        f"(threshold={threshold}) with no phase engaged.\n"
         f"  -> Start the protocol first: cg new <change> or cg begin --phase <PHASE>.\n"
         f"  -> Escape hatch: CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...\n",
         file=sys.stderr,

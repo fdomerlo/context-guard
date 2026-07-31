@@ -252,6 +252,113 @@ class TestHookFailsOpenOnBrokenState(HookTestCase):
         self.assertNotIn("Traceback", res.stderr)
 
 
+class TestThresholdIsConfigurable(HookTestCase):
+    """F4: "umbral configurable vía manifest o env"."""
+
+    def test_threshold_from_the_manifest_raises_the_bar(self):
+        self.idle_change("alpha")
+        self.set_manifest_key("alpha", "hook", {"file_threshold": 6})
+        self.stage("a.py", "b.py", "c.py", "d.py", "e.py")
+
+        self.assertEqual(self.run_hook().returncode, 0)
+
+    def test_manifest_threshold_still_blocks_above_it(self):
+        self.idle_change("alpha")
+        self.set_manifest_key("alpha", "hook", {"file_threshold": 3})
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook().returncode, 1)
+
+    def test_the_strictest_configured_threshold_wins(self):
+        """Two changes, two thresholds. Picking "the first one" would resolve a
+        repo-wide policy by directory order — the alphabetical-guess bug PLAN.md
+        1.3 forbids by name. The minimum is order-independent and errs toward
+        asking."""
+        self.idle_change("alpha")
+        self.idle_change("beta")
+        self.set_manifest_key("alpha", "hook", {"file_threshold": 9})
+        self.set_manifest_key("beta", "hook", {"file_threshold": 3})
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook().returncode, 1)
+
+    def test_env_overrides_the_manifest(self):
+        """The env var is the per-invocation escape hatch; it has to win over
+        committed configuration or it is not an escape hatch."""
+        self.idle_change("alpha")
+        self.set_manifest_key("alpha", "hook", {"file_threshold": 9})
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook(CONTEXT_GUARD_FILE_THRESHOLD="2").returncode, 1)
+
+    def test_unparseable_threshold_falls_back_to_the_default(self):
+        """A typo in the manifest must not silently disable the hook."""
+        self.idle_change("alpha")
+        self.set_manifest_key("alpha", "hook", {"file_threshold": "many"})
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        self.assertEqual(self.run_hook().returncode, 1)
+
+
+class TestFilesInScopeIsAdvisoryOnly(HookTestCase):
+    """F4: "chequeo soft de files_in_scope (warning, no bloqueo, para no
+    pelearte con tu propio flujo)"."""
+
+    def test_out_of_scope_files_warn_but_never_block(self):
+        self.executing_change("alpha")
+        self.set_manifest_key("alpha", "files_in_scope", ["src/"])
+        self.stage("src/a.py", "src/b.py", "docs/readme.md", "other.py")
+
+        res = self.run_hook()
+
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("WARN", res.stderr)
+        self.assertIn("other.py", res.stderr)
+
+    def test_in_scope_files_produce_no_warning(self):
+        self.executing_change("alpha")
+        self.set_manifest_key("alpha", "files_in_scope", ["src/", "setup.py"])
+        self.stage("src/a.py", "src/nested/b.py", "setup.py", "src/c.py")
+
+        res = self.run_hook()
+
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn("WARN", res.stderr)
+
+    def test_guard_artifacts_are_always_in_scope(self):
+        """The agent's own state files are written by every phase. Warning about
+        them on every commit is how a soft check gets tuned out."""
+        self.executing_change("alpha")
+        self.set_manifest_key("alpha", "files_in_scope", ["src/"])
+        self.stage("src/a.py", "src/b.py", "src/c.py")
+        self._git("add", "-A", ".context-guard")
+
+        res = self.run_hook()
+
+        self.assertNotIn("WARN", res.stderr)
+
+    def test_empty_files_in_scope_warns_about_nothing(self):
+        """An unfilled files_in_scope means "not declared", not "nothing is
+        allowed" — the manifest ships with it empty."""
+        self.executing_change("alpha")
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        res = self.run_hook()
+
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn("WARN", res.stderr)
+
+    def test_scope_is_only_checked_while_executing(self):
+        """In PLAN the scope has not been decided yet, so every file is out of
+        it. Warning there would train the user to ignore the warning."""
+        cmd_new(self.repo, "alpha")
+        self.set_manifest_key("alpha", "files_in_scope", ["src/"])
+        self.stage("a.py", "b.py", "c.py", "d.py")
+
+        res = self.run_hook()
+
+        self.assertNotIn("WARN", res.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
