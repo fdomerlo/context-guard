@@ -1,0 +1,9 @@
+{
+  "_comment": "Merge into .claude/settings.json. PLAN.md 0.6: cg approve is cooperative by itself; putting it on the ask list is the hard control that pairs with it.",
+  "permissions": {
+    "ask": [
+      "Bash(cg approve*)",
+      "Bash(context-guard approve*)"
+    ]
+  }
+}
