@@ -85,8 +85,9 @@ infrastructure → implementation → testing; reference success criteria as
 acceptance checks.
 
 Optionally update `snapshot.md` with a short state-of-the-world summary if
-the change spans multiple sessions — `cg validate` requires it non-`[PENDING]`
-alongside `objective.md`.
+the change spans multiple sessions — `cg validate` requires the file to
+exist (alongside `objective.md`) and checks size and language, though it
+does not check for a leftover `[PENDING]`; that is `commit`'s job.
 
 ### Step 5: Human review gate
 
@@ -96,8 +97,9 @@ can cross.**
 1. Present `objective.md` and `tasks.md` with an executive summary.
 2. List architecture decisions and open questions explicitly.
 3. Run `cg validate --context <path> --change <change-name>` and fix
-   anything it flags (`[PENDING]` left over, missing file, non-English text)
-   before asking for approval.
+   anything it flags (missing file, oversized artifact, non-English text) —
+   it does not check for `[PENDING]`; confirm by eye that both artifacts
+   are actually filled in before asking for approval.
 4. Ask the human, in this conversation, to review and confirm.
 
 `cg approve --change <name> [--by <who>] [--hotfix --reason "<text>"]` is the
