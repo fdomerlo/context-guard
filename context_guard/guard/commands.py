@@ -20,7 +20,13 @@ from .paths import (
 )
 from .manifest import load_manifest, save_manifest, create_initial_manifest
 from .locking import with_write_lock, acquire
-from .transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint
+from .transaction import (
+    cmd_approve,
+    cmd_begin,
+    cmd_commit,
+    cmd_rollback,
+    cmd_checkpoint,
+)
 from .migrate import cmd_migrate
 from .errors import (
     CommandResult,

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from context_guard.guard.transaction import (
+    cmd_approve,
     cmd_begin,
     cmd_commit,
     cmd_rollback,
@@ -91,6 +92,8 @@ class TestTransaction(unittest.TestCase):
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
             f.write("- [x] Task 1")
+        # F4: PLAN -> EXECUTE is gated on a recorded human sign-off.
+        cmd_approve(self.context, by="tester")
 
         res = cmd_commit(self.context, "EXECUTE")
         self.assertEqual(res.exit_code, EXIT_OK)
@@ -118,6 +121,7 @@ class TestTransaction(unittest.TestCase):
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
             f.write("- [x] Task 1")
+        cmd_approve(self.context, by="tester")
         cmd_commit(self.context, "EXECUTE")
 
         cmd_begin(self.context, "EXECUTE")

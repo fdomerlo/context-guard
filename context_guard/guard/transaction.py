@@ -17,6 +17,7 @@ from .errors import (
     EXIT_GENERIC,
     EXIT_VALIDATION,
     EXIT_BAD_TRANSITION,
+    EXIT_APPROVAL_REQUIRED,
 )
 
 DEFAULT_TTL = 1800
@@ -61,6 +62,112 @@ def _scaffold_artifacts(context_path, change=None):
         if not os.path.exists(filepath):
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(default_content)
+
+
+def _record_approval(m, approval, consumed_as):
+    """Move an approval into the audit trail, spending it.
+
+    An approval left live in the manifest authorizes every future transition
+    into EXECUTE, not just the one the human looked at. Consuming it here is
+    what makes a sign-off single-use.
+    """
+    entry = dict(approval)
+    entry["consumed_at"] = datetime.now().isoformat()
+    entry["consumed_as"] = consumed_as
+    m.setdefault("approval_history", []).append(entry)
+    m.pop("approval", None)
+
+
+def cmd_approve(context, by=None, hotfix=False, reason=None, change=None):
+    """Records the human sign-off that PLAN -> EXECUTE requires.
+
+    This command is cooperative and makes no pretence otherwise: an agent with
+    a shell can run it. What it buys is that the transition cannot happen
+    without *someone* running it, and that whoever did is named in the
+    manifest. The hard control is the harness permission prompt documented in
+    adapters/ — see PLAN.md 0.6.
+
+    `hotfix` is the audited door out of the pipeline: it spends the approval
+    immediately and jumps lock_phase straight to EXECUTE, recording why. It
+    replaces state-guard's parallel bypass flow, whose problem was never that
+    it existed but that nothing survived it.
+    """
+    if hotfix and not (reason or "").strip():
+        return CommandResult(
+            'FAIL|HOTFIX_REASON_REQUIRED|pass --reason "<text>"',
+            EXIT_VALIDATION,
+        )
+
+    # An approval attributed to nobody is an unsigned approval, so the default
+    # still names whoever the environment says is at the keyboard.
+    who = by or os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+
+    # Checked before taking the write lock: acquiring it would create the
+    # change directory as a side effect, inventing the change the caller
+    # mistyped.
+    if load_manifest(context, change) is None:
+        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+
+    def _do():
+        m = load_manifest(context, change)
+        if not m:
+            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+
+        lock_phase = m.get("lock_phase", "PLAN")
+        if lock_phase != "PLAN":
+            # Only PLAN -> EXECUTE consumes an approval. Recording one anywhere
+            # else leaves a live sign-off that nothing will spend, waiting to
+            # authorize a transition nobody was asked about.
+            return CommandResult(
+                f"FAIL|APPROVAL_NOT_APPLICABLE|lock_phase={lock_phase}",
+                EXIT_BAD_TRANSITION,
+            )
+
+        approval = {"by": who, "at": datetime.now().isoformat()}
+
+        if not hotfix:
+            m["approval"] = approval
+            save_manifest(context, m, change)
+            return CommandResult(
+                f"SUCCESS|APPROVED|{get_paths(context, change)['change']}|by={who}",
+                EXIT_OK,
+            )
+
+        txn = m.get("transaction", {})
+        if txn.get("txn_status", "idle") == "in_progress":
+            # The open transaction holds a snapshot taken at lock_phase=PLAN.
+            # Jumping the pipeline behind its back means a later rollback
+            # restores a state the change already left, silently undoing the
+            # hotfix.
+            return CommandResult(
+                f"FAIL|TXN_IN_PROGRESS|{txn.get('txn_phase')}",
+                EXIT_LOCK_HELD,
+            )
+
+        approval["hotfix"] = True
+        approval["reason"] = reason.strip()
+        _record_approval(m, approval, "PLAN->EXECUTE (hotfix)")
+
+        m["lock_phase"] = "EXECUTE"
+        # PLAN was skipped, not done. Writing it into completed_phases would
+        # make the manifest claim a plan was produced and reviewed; leaving it
+        # pending would make the pipeline ask for it again.
+        pending = m.get("pending_phases", [])
+        if "PLAN" in pending:
+            pending.remove("PLAN")
+        m["pending_phases"] = pending
+        skipped = m.setdefault("skipped_phases", [])
+        if "PLAN" not in skipped:
+            skipped.append("PLAN")
+
+        save_manifest(context, m, change)
+        return CommandResult(
+            f"SUCCESS|APPROVED_HOTFIX|{get_paths(context, change)['change']}"
+            f"|by={who}|lock_phase=EXECUTE",
+            EXIT_OK,
+        )
+
+    return with_write_lock(context, _do, change=change)
 
 
 def cmd_begin(context, phase, ttl=DEFAULT_TTL, change=None):
@@ -158,6 +265,16 @@ def cmd_commit(context, next_phase, change=None):
                         EXIT_VALIDATION,
                     )
 
+            # Checked after the artifacts, deliberately: an approval must not
+            # buy a pass through validation, and a human who signed off on a
+            # still-[PENDING] plan should be told the plan is empty, not that
+            # their approval is missing.
+            if not m.get("approval"):
+                return CommandResult(
+                    "FAIL|APPROVAL_REQUIRED|run `cg approve` before entering EXECUTE",
+                    EXIT_APPROVAL_REQUIRED,
+                )
+
         elif phase == "VERIFY" and next_phase == "ARCHIVE":
             required_files = ["review-report.md", "verify-report.md"]
             for fname in required_files:
@@ -174,6 +291,11 @@ def cmd_commit(context, next_phase, change=None):
                         "FAIL|VALIDATION|Debe completar la auditoría en review-report.md y verify-report.md antes de archivar",
                         EXIT_VALIDATION,
                     )
+
+        # The approval is spent by the transition it authorized, so the next
+        # iteration of the plan needs a new one.
+        if phase == "PLAN" and next_phase == "EXECUTE" and m.get("approval"):
+            _record_approval(m, m["approval"], "PLAN->EXECUTE")
 
         # Actualizar grafo de fases
         m["current_phase"] = phase

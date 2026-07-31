@@ -9,6 +9,7 @@ import json
 import sys
 
 from .commands import (
+    cmd_approve,
     cmd_check_lock,
     cmd_new,
     cmd_list,
@@ -47,6 +48,17 @@ def parse_args(argv=None):
     p_commit = subparsers.add_parser("commit")
     p_commit.add_argument("--context", required=True)
     p_commit.add_argument("--next-phase", required=True)
+
+    # Human-only: the agent must ask for this to be run, not run it. Pair it
+    # with your harness's permission prompt (see adapters/*/PERMISSIONS.md).
+    p_approve = subparsers.add_parser("approve")
+    p_approve.add_argument("--context", required=True)
+    p_approve.add_argument("--by", default=None,
+                           help="Who is approving (default: $USER)")
+    p_approve.add_argument("--hotfix", action="store_true",
+                           help="Skip PLAN and open EXECUTE directly; requires --reason")
+    p_approve.add_argument("--reason", default=None,
+                           help="Why the pipeline is being skipped; persisted in the manifest")
 
     p_rollback = subparsers.add_parser("rollback")
     p_rollback.add_argument("--context", required=True)
@@ -148,6 +160,8 @@ def dispatch(args):
         "migrate": lambda: cmd_migrate(args.context),
         "begin": lambda: cmd_begin(args.context, args.phase, args.ttl, change),
         "commit": lambda: cmd_commit(args.context, args.next_phase, change),
+        "approve": lambda: cmd_approve(
+            args.context, args.by, args.hotfix, args.reason, change),
         "rollback": lambda: cmd_rollback(args.context, change),
         "checkpoint": lambda: cmd_checkpoint(args.context, args.summary, change),
         "check-lock": lambda: cmd_check_lock(args.context, change),

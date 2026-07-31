@@ -14,6 +14,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from context_guard.guard.commands import (
+    cmd_approve,
     cmd_archive,
     cmd_claim,
     cmd_list,
@@ -59,6 +60,8 @@ class MultiChangeTestCase(unittest.TestCase):
             f.write("Objective defined.\n")
         with open(p["tasks"], "w") as f:
             f.write("- [x] 1.1 Task\n")
+        # F4: PLAN -> EXECUTE is gated on a recorded human sign-off.
+        cmd_approve(self.context, by="tester", change=change)
         return cmd_commit(self.context, "EXECUTE", change=change)
 
 
@@ -162,6 +165,7 @@ class TestNewStartsPlanning(MultiChangeTestCase):
             f.write("Objective defined.\n")
         with open(p["tasks"], "w") as f:
             f.write("- [x] 1.1 Task\n")
+        cmd_approve(self.context, by="tester", change="alpha")
 
         res = cmd_commit(self.context, "EXECUTE", change="alpha")
 

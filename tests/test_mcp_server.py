@@ -17,7 +17,7 @@ from context_guard.mcp_server import (
 )
 from context_guard.guard.manifest import load_manifest
 from context_guard.guard.paths import get_paths
-from context_guard.guard.commands import cmd_new
+from context_guard.guard.commands import cmd_approve, cmd_new
 from context_guard.guard.errors import EXIT_VALIDATION
 
 
@@ -48,6 +48,11 @@ class TestMCPServer(unittest.TestCase):
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
             f.write("- [x] Task 1")
+        # F4: the approval gate applies to the MCP transport too. `approve`
+        # is deliberately not an MCP tool — routing it through this channel
+        # would bypass the harness permission prompt that PLAN.md 0.6 names as
+        # the only hard control in the model.
+        cmd_approve(self.context, by="tester")
 
         res_commit = commit_transaction(self.context, "EXECUTE")
         self.assertTrue(res_commit.startswith("[0] SUCCESS|COMMIT"))

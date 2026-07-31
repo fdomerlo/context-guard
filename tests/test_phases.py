@@ -10,7 +10,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from context_guard.guard.manifest import create_initial_manifest, load_manifest, save_manifest
 from context_guard.guard.paths import get_paths
-from context_guard.guard.transaction import cmd_begin, cmd_commit, cmd_rollback
+from context_guard.guard.transaction import (
+    cmd_approve,
+    cmd_begin,
+    cmd_commit,
+    cmd_rollback,
+)
 from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_VALIDATION,
@@ -51,6 +56,8 @@ class TestThreeStatePhases(unittest.TestCase):
             f.write("Objective defined")
         with open(os.path.join(base_dir, "tasks.md"), "w", encoding="utf-8") as f:
             f.write("- [x] Task 1")
+        # F4: PLAN -> EXECUTE is gated on a recorded human sign-off.
+        cmd_approve(self.context, by="tester")
 
         res_c1 = cmd_commit(self.context, "EXECUTE")
         self.assertEqual(res_c1.exit_code, EXIT_OK)
