@@ -68,19 +68,23 @@ class TestMCPServer(unittest.TestCase):
 
     def test_tools_operate_on_an_explicit_change(self):
         """The MCP transport must be able to name a change, or it is unusable
-        on any project with more than one in flight."""
+        on any project with more than one in flight.
+
+        `cg new` leaves each change with PLAN already begun, so rolling one
+        back is what proves the tool acted on the change it was told to.
+        """
         cmd_new(self.context, "alpha")
         cmd_new(self.context, "zebra")
 
-        res = begin_transaction(self.context, "PLAN", change="zebra")
+        res = rollback_transaction(self.context, change="zebra")
 
-        self.assertTrue(res.startswith("[0] SUCCESS|BEGIN"), res)
+        self.assertTrue(res.startswith("[0] SUCCESS|ROLLBACK"), res)
         self.assertEqual(
             load_manifest(self.context, "zebra")["transaction"]["txn_status"],
-            "in_progress")
+            "idle")
         self.assertEqual(
             load_manifest(self.context, "alpha")["transaction"]["txn_status"],
-            "idle")
+            "in_progress")
 
     def test_ambiguous_change_is_reported_not_guessed(self):
         """Omitting the change with several active must surface the error

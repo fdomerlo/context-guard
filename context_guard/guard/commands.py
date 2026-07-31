@@ -20,7 +20,7 @@ from .paths import (
 )
 from .manifest import load_manifest, save_manifest, create_initial_manifest
 from .locking import with_write_lock, acquire
-from .transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint, _scaffold_artifacts
+from .transaction import cmd_begin, cmd_commit, cmd_rollback, cmd_checkpoint
 from .migrate import cmd_migrate
 from .errors import (
     CommandResult,
@@ -82,7 +82,13 @@ def _pid_is_alive(pid):
 # ---------------------------------------------------------------------------
 
 def cmd_new(context, change):
-    """Crea un change nuevo: directorio, manifest inicial y artefactos.
+    """Crea un change nuevo y deja la fase PLAN iniciada.
+
+    Beginning PLAN here rather than leaving it to a separate call is
+    deliberate: a change created but not begun sits at lock_phase=PLAN with
+    no transaction open, so nothing yet enforces the pipeline and the agent
+    has to remember one more step. Remembered steps are what F1 showed to be
+    unreliable.
 
     Refuses to touch an existing change rather than reinitialising it — a
     `new` that silently reset a manifest would discard work whose whole
@@ -99,8 +105,13 @@ def cmd_new(context, change):
 
     os.makedirs(p["base"], exist_ok=True)
     save_manifest(context, create_initial_manifest(context, name), name)
-    _scaffold_artifacts(context, name)
-    return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}", EXIT_OK)
+
+    # cmd_begin scaffolds the PLAN artifacts itself.
+    begin = cmd_begin(context, "PLAN", change=name)
+    if begin.exit_code != EXIT_OK:
+        return begin
+
+    return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}|phase=PLAN", EXIT_OK)
 
 
 def cmd_list(context):

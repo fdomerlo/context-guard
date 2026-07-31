@@ -32,6 +32,7 @@ from context_guard.guard.errors import (
     EXIT_OK,
     EXIT_BAD_TRANSITION,
     EXIT_LOCK_HELD,
+    EXIT_VALIDATION,
     AmbiguousChangeError,
 )
 
@@ -48,8 +49,11 @@ class MultiChangeTestCase(unittest.TestCase):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _complete_plan(self, change):
-        """Drive a change from PLAN to lock_phase=EXECUTE through public calls."""
-        cmd_begin(self.context, "PLAN", change=change)
+        """Drive a change from PLAN to lock_phase=EXECUTE through public calls.
+
+        No cmd_begin here: cmd_new already leaves PLAN in progress, and
+        calling begin again would fail with TXN_IN_PROGRESS.
+        """
         p = get_paths(self.context, change)
         with open(os.path.join(p["base"], "objective.md"), "w") as f:
             f.write("Objective defined.\n")
@@ -119,6 +123,77 @@ class TestAmbiguousChangeResolution(MultiChangeTestCase):
         self.assertIn("alpha", result.message)
         self.assertIn("zebra", result.message)
         self.assertEqual(sorted(list_changes(self.context)), ["alpha", "zebra"])
+
+
+class TestNewStartsPlanning(MultiChangeTestCase):
+    """`cg new` leaves the change in PLAN, already begun.
+
+    The alternative — create the change and wait for a separate `begin PLAN`
+    — puts a step between creation and protection that the agent has to
+    remember. F1 established what happens to steps an agent has to remember:
+    a change sitting at lock_phase=PLAN with no transaction open is one where
+    nothing yet enforces the pipeline.
+    """
+
+    def test_new_leaves_a_plan_transaction_in_progress(self):
+        cmd_new(self.context, "alpha")
+
+        txn = load_manifest(self.context, "alpha")["transaction"]
+        self.assertEqual(txn["txn_status"], "in_progress")
+        self.assertEqual(txn["txn_phase"], "PLAN")
+
+    def test_new_scaffolds_the_artifacts(self):
+        cmd_new(self.context, "alpha")
+
+        p = get_paths(self.context, "alpha")
+        for fname in ("objective.md", "snapshot.md", "tasks.md",
+                      "review-report.md", "verify-report.md"):
+            path = os.path.join(p["base"], fname)
+            self.assertTrue(os.path.exists(path), fname)
+            with open(path) as f:
+                self.assertIn("[PENDING]", f.read())
+
+    def test_new_change_can_commit_straight_to_execute(self):
+        """The point of starting the transaction: the change is immediately
+        workable, with no remembered step in between."""
+        cmd_new(self.context, "alpha")
+        p = get_paths(self.context, "alpha")
+        with open(os.path.join(p["base"], "objective.md"), "w") as f:
+            f.write("Objective defined.\n")
+        with open(p["tasks"], "w") as f:
+            f.write("- [x] 1.1 Task\n")
+
+        res = cmd_commit(self.context, "EXECUTE", change="alpha")
+
+        self.assertEqual(res.exit_code, EXIT_OK)
+        self.assertEqual(load_manifest(self.context, "alpha")["lock_phase"], "EXECUTE")
+
+    def test_new_refuses_to_reinitialise_an_existing_change(self):
+        """`new` on a live change must not reset its manifest — that would
+        discard exactly the state this tool exists to preserve."""
+        cmd_new(self.context, "alpha")
+        p = get_paths(self.context, "alpha")
+        with open(os.path.join(p["base"], "objective.md"), "w") as f:
+            f.write("Real work.\n")
+
+        result = cmd_new(self.context, "alpha")
+
+        self.assertEqual(result.exit_code, EXIT_VALIDATION)
+        self.assertIn("CHANGE_EXISTS", result.message)
+        with open(os.path.join(p["base"], "objective.md")) as f:
+            self.assertIn("Real work", f.read())
+
+    def test_new_does_not_start_planning_on_a_sibling(self):
+        cmd_new(self.context, "alpha")
+        cmd_new(self.context, "zebra")
+
+        self.assertEqual(
+            load_manifest(self.context, "alpha")["transaction"]["txn_phase"], "PLAN")
+        self.assertEqual(
+            load_manifest(self.context, "zebra")["transaction"]["txn_phase"], "PLAN")
+        self.assertNotEqual(
+            load_manifest(self.context, "alpha")["transaction"]["txn_started_at"],
+            None)
 
 
 class TestChangeIsolation(MultiChangeTestCase):
