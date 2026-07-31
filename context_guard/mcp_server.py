@@ -32,6 +32,12 @@ from context_guard.guard.transaction import (
     cmd_rollback,
     cmd_checkpoint,
 )
+from context_guard.guard.commands import (
+    cmd_check_completion,
+    cmd_next_task,
+    cmd_status,
+    cmd_validate,
+)
 from context_guard.guard.errors import GuardError, EXIT_GENERIC
 
 mcp = FastMCP("context-guard")
@@ -166,6 +172,103 @@ def save_checkpoint(context: str, summary: str, change: str | None = None) -> st
         non-zero exit code.
     """
     return _format_result(cmd_checkpoint, context, summary, change=change)
+
+
+@mcp.tool()
+def get_status(context: str, change: str | None = None) -> str:
+    """Read the whole state of a change in one call, for warm-boot rehydration.
+
+    Returns the context name, the first line of objective.md, task progress as
+    completed/total, the next unclaimed pending task, and whether the session
+    lock is held. This is the tool to call first after losing context: it is
+    cheaper than reading the artifacts and it never guesses.
+
+    Args:
+        context: ABSOLUTE PATH to the current project directory.
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
+    Returns:
+        '[0] CONTEXT: ... / OBJECTIVE: ... / PROGRESS: n/m tasks complete /
+        NEXT: ... / LOCK: ...' on success.
+    """
+    return _format_result(cmd_status, context, change)
+
+
+@mcp.tool()
+def check_completion(context: str, change: str | None = None) -> str:
+    """Count the checkboxes in tasks.md deterministically.
+
+    Use this instead of counting by eye before advancing a phase — the parser
+    is the source of truth for whether the work is done, and it does not
+    hallucinate a total.
+
+    Args:
+        context: ABSOLUTE PATH to the current project directory.
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
+    Returns:
+        '[0] source=tasks.md / total=N / completed=M / all_complete=true|false'.
+    """
+    return _format_result(cmd_check_completion, context, change)
+
+
+@mcp.tool()
+def validate(context: str, change: str | None = None) -> str:
+    """Lint the session artifacts: existence, size cap, and language.
+
+    Requires objective.md, snapshot.md and tasks.md to exist; checks every
+    artifact against the size cap and rejects Spanish text (artifacts are
+    English by contract). Does NOT check for leftover '[PENDING]' markers —
+    that is enforced by commit_transaction.
+
+    Args:
+        context: ABSOLUTE PATH to the current project directory.
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+
+    Returns:
+        '[0] SUCCESS|VALIDATE_OK', or '[4]' followed by one FAIL line per
+        problem found.
+    """
+    return _format_result(cmd_validate, context, None, change)
+
+
+@mcp.tool()
+def next_task(context: str, change: str | None = None,
+              agent_id: str | None = None) -> str:
+    """Claim the next pending task in tasks.md and return it.
+
+    Not read-only: the claim is taken atomically as part of the same call,
+    which is what makes it safe for several agents to work one change at once.
+    The returned agent_id is the identity that won the claim — keep it, since
+    releasing the task requires passing it back.
+
+    Claims carry a lease; a task whose lease expired is treated as abandoned
+    and handed to the next caller, with the takeover recorded in the manifest.
+
+    Args:
+        context: ABSOLUTE PATH to the current project directory.
+        change: OPTIONAL name of the change to operate on. Omit it when the
+                project has exactly one active change; if several are active,
+                omitting it is an error naming them, never a silent guess.
+        agent_id: OPTIONAL identity to claim as. Generated if omitted.
+
+    Returns:
+        '[0] SUCCESS|NEXT_TASK|{task_id}|{agent_id}|{description}', or
+        '[0] DONE|NO_PENDING_TASKS' when nothing is left.
+    """
+    return _format_result(cmd_next_task, context, agent_id, change)
+
+
+# Deliberately NOT exposed as a tool: `approve`. PLAN.md 0.6 names the
+# harness's permission prompt on `cg approve` as the only hard control in the
+# enforcement model, and an MCP tool is precisely the channel that routes
+# around it. The MCP is a transport; the human's confirmation is not.
 
 
 def main():
