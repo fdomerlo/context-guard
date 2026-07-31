@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Pre-commit gate para context-guard.
+"""Pre-commit gate for context-guard.
 
-Bloquea commits que tocan más de N archivos si no hay evidencia de que
-el protocolo PLAN->EXECUTE->VERIFY fue iniciado para este contexto.
+Rejects commits touching more than N files when nothing shows the
+PLAN -> EXECUTE -> VERIFY protocol was ever engaged for this context.
 """
 import json
 import os
@@ -67,14 +67,14 @@ def main():
     if os.environ.get("CONTEXT_GUARD_BYPASS") == "1":
         reason = os.environ.get("CONTEXT_GUARD_BYPASS_REASON", "unspecified")
         log_bypass(root, files, reason)
-        print(f"[context-guard] BYPASS registrado en {BYPASS_LOG}", file=sys.stderr)
+        print(f"[context-guard] BYPASS recorded in {BYPASS_LOG}", file=sys.stderr)
         sys.exit(0)
 
     print(
-        f"[context-guard] COMMIT RECHAZADO: {len(files)} archivos modificados "
-        f"(umbral={FILE_THRESHOLD}) sin transacción iniciada.\n"
-        f"  -> Utiliza el servidor MCP 'context-guard' para iniciar la fase PLAN.\n"
-        f"  -> Excepción (Bypass): CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...\n",
+        f"[context-guard] COMMIT REJECTED: {len(files)} files staged "
+        f"(threshold={FILE_THRESHOLD}) with no phase engaged.\n"
+        f"  -> Start the protocol first: cg new <change> or cg begin --phase <PHASE>.\n"
+        f"  -> Escape hatch: CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...\n",
         file=sys.stderr,
     )
     sys.exit(1)
