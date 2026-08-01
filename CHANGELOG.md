@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [Unreleased]
+## [2.1.0] - 2026-08-01
 
 ### Added
 
@@ -46,6 +46,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - `--with-antigravity-hook`. The deny hook is installed by
   `cg setup --host antigravity`, since at global scope it was the only thing
   that flag's host had to install.
+
+### Known gaps
+
+Deliberately out of scope for 2.1, recorded here so the decisions outlive the
+plan that made them:
+
+- No `get.sh` curl-pipe bootstrap; installation is `pip install` plus
+  `cg setup`.
+- No `cg setup --uninstall`. The exact list of files each run touches is
+  printed for that reason — it is the only record of what to remove by hand.
+- The tutorial exists in Spanish only; no English mirror yet.
+- `cg setup` and the three host adapters are still unverified against a real
+  host session. `docs/adapters/VERIFY.md` is the manual checklist.
 
 ## [2.0.0] - 2026-07-31
 

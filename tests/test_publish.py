@@ -90,5 +90,130 @@ class TestTrustedPublishingLeavesNoTokenToLeak(PublishWorkflowCase):
         self.assertRegex(self.text, r"environment:\s*\n?\s*(name:\s*)?pypi")
 
 
+class TestTheDocumentedInstallNameIsTheRealOne(unittest.TestCase):
+    """The runbook records that `context-guard` may be refused by PyPI's
+    similarity check and that the fallback is `context-guard-cli`. If that
+    fallback is ever applied — or reverted — pyproject.toml and every
+    `pip install` line in the docs have to move together. They are edited in
+    different places by different people, which is exactly how they drift.
+    """
+
+    DOCS = ("README.md", "README.es.md", "TUTORIAL.es.md")
+
+    def test_every_documented_pip_install_uses_the_declared_name(self):
+        name = package_name()
+        for doc in self.DOCS:
+            with open(os.path.join(REPO_ROOT, doc), encoding="utf-8") as f:
+                text = f.read()
+            # Only installs of a published package name. Editable and local
+            # installs (`pip install -e ".[dev]"`) name a path, not a
+            # package, and belong to the contributor instructions.
+            for args in re.findall(r"pip install ([^\n`]+)", text):
+                tokens = [t for t in args.split() if not t.startswith("-")]
+                if not tokens or tokens[0].startswith((".", '"', "'")) or "/" in tokens[0]:
+                    continue
+                with self.subTest(doc=doc, package=tokens[0]):
+                    self.assertEqual(tokens[0], name)
+
+    def test_the_pypi_badge_points_at_the_declared_name(self):
+        name = package_name()
+        for doc in ("README.md", "README.es.md"):
+            with open(os.path.join(REPO_ROOT, doc), encoding="utf-8") as f:
+                text = f.read()
+            with self.subTest(doc=doc):
+                self.assertIn(f"img.shields.io/pypi/v/{name}", text)
+
+
+class TestInstallationIsTwoLines(unittest.TestCase):
+    """F3 point 3 and the phase's whole justification: installing must stop
+    requiring a clone of this repository."""
+
+    def _install_section(self, doc, heading):
+        with open(os.path.join(REPO_ROOT, doc), encoding="utf-8") as f:
+            text = f.read()
+        match = re.search(rf"^## {heading}$(.*?)(?=^## )", text, re.M | re.S)
+        self.assertIsNotNone(match, f"{doc} has no '{heading}' section")
+        return match.group(1)
+
+    def test_the_readme_installs_from_pypi(self):
+        for doc, heading in (("README.md", "Install"),
+                             ("README.es.md", "Instalación")):
+            section = self._install_section(doc, heading)
+            with self.subTest(doc=doc):
+                self.assertIn(f"pip install {package_name()}", section)
+                self.assertIn("cg setup", section)
+
+    def test_the_readme_no_longer_installs_from_a_git_url(self):
+        for doc, heading in (("README.md", "Install"),
+                             ("README.es.md", "Instalación")):
+            section = self._install_section(doc, heading)
+            with self.subTest(doc=doc):
+                self.assertNotIn("git+https://github.com", section)
+
+    def test_the_tutorial_never_asks_the_reader_to_clone(self):
+        with open(os.path.join(REPO_ROOT, "TUTORIAL.es.md"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertNotIn("git clone", text)
+        self.assertNotIn("git+https://github.com", text)
+
+    def test_the_tutorial_has_exactly_one_installation_section(self):
+        """F3 point 3: "queda UNA sección de instalación". Two sections that
+        each claim to be the one-time setup is how a reader ends up doing
+        neither correctly."""
+        with open(os.path.join(REPO_ROOT, "TUTORIAL.es.md"), encoding="utf-8") as f:
+            headings = re.findall(r"^## \d+\. (.+)$", f.read(), re.M)
+        installs = [h for h in headings if "nstalaci" in h]
+        self.assertEqual(len(installs), 1, f"installation sections found: {installs}")
+
+
+class TestTutorialCrossReferencesSurvivedRenumbering(unittest.TestCase):
+    """Merging the tutorial's two installation sections shifted every later
+    section number down by one, and left four "paso N" pointers aimed at the
+    wrong sections — a reader following "see step 5" landed on the wrong
+    place. Renumbering is the classic way prose rots silently: nothing about
+    a stale but valid-looking number fails a build.
+    """
+
+    def setUp(self):
+        with open(os.path.join(REPO_ROOT, "TUTORIAL.es.md"), encoding="utf-8") as f:
+            self.text = f.read()
+        self.sections = {
+            int(n): title
+            for n, title in re.findall(r"^## (\d+)\. (.+)$", self.text, re.M)
+        }
+        self.assertTrue(self.sections, "no numbered sections found")
+
+    def test_every_referenced_step_exists(self):
+        for n in re.findall(r"\bpaso (\d+)\b", self.text):
+            with self.subTest(step=n):
+                self.assertIn(int(n), self.sections)
+
+    def test_pointers_to_the_approval_step_name_the_right_section(self):
+        approval = [n for n, title in self.sections.items() if "aprobaci" in title.lower()]
+        self.assertEqual(len(approval), 1, f"approval sections: {approval}")
+        expected = approval[0]
+        for sentence in re.split(r"(?<=[.!?])\s+", self.text):
+            match = re.search(r"\bpaso (\d+)\b", sentence)
+            if match and "aprobaci" in sentence.lower():
+                with self.subTest(sentence=sentence[:60]):
+                    self.assertEqual(
+                        int(match.group(1)), expected,
+                        "a pointer to the approval step names the wrong section",
+                    )
+
+
+class TestBacklogIsRecordedRatherThanForgotten(unittest.TestCase):
+    """F3 point 4 names three things explicitly out of scope. An
+    out-of-scope decision that lives only in a plan file disappears the
+    moment the cycle closes."""
+
+    def test_the_changelog_records_what_was_left_out(self):
+        with open(os.path.join(REPO_ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
+            text = f.read()
+        for item in ("get.sh", "--uninstall"):
+            with self.subTest(item=item):
+                self.assertIn(item, text)
+
+
 if __name__ == "__main__":
     unittest.main()

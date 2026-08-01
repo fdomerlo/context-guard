@@ -63,14 +63,17 @@ class TestPitchAndLanguage(ReadmeTestCase):
         self.assertIn("README.es.md", self.text)
 
     def test_ci_badge_points_at_the_real_workflow(self):
-        """PLAN.md F7: only the CI badge, verifiable right now via GitHub
-        Actions — no PyPI version badge until the package is actually
-        published, or it would 404/show nothing the day someone clicks it."""
+        """PLAN.md F7 allowed only the CI badge, since a PyPI badge for an
+        unpublished package renders as nothing the day someone clicks it.
+        PLAN-2.1 F3 adds the PyPI badge because F3 is the phase that
+        publishes the package — the badge and the release land together, and
+        the release is what makes it resolve. Which badge points where is
+        pinned in tests/test_publish.py, against the name pyproject
+        declares."""
         self.assertIn(
             "github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg",
             self.text,
         )
-        self.assertNotIn("img.shields.io/pypi", self.text)
 
 
 class TestExitCodeTable(ReadmeTestCase):

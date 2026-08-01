@@ -1,6 +1,7 @@
 # Context Guard
 
 [![CI](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/context-guard-cli)](https://pypi.org/project/context-guard-cli/)
 
 **The transactional memory layer for AI coding agents — your context survives crashes, compaction, and session loss.**
 
@@ -65,38 +66,32 @@ illustrative shorthand.
 
 ## Install
 
-**Zero-install, via `uvx`** — add this to your MCP client's config
-(Claude Desktop, Antigravity, Cursor: `claude_desktop_config.json` /
-`mcp-settings.json`; OpenCode: `~/.config/opencode/opencode.jsonc`):
-
-```jsonc
-{
-  "mcpServers": {
-    "context-guard": {
-      "command": "uvx",
-      "args": ["git+https://github.com/fdomerlo/context-guard.git"]
-    }
-  }
-}
-```
-
-**CLI only**, for the `cg` binary without an MCP client:
+Two lines, once per machine:
 
 ```bash
-uv pip install git+https://github.com/fdomerlo/context-guard.git
+pip install context-guard-cli
+cg setup
 ```
 
-**Local, editable**, for development:
+`cg setup` detects Claude Code, OpenCode and Antigravity, installs the slash
+commands, and puts `cg approve` behind each one's permission prompt — see
+[Adapters](#adapters-and-permission-configuration). It prints every file it
+touched, and running it again changes nothing.
+
+Per project there is no install step: `cg new` writes the phase documents
+into `.context-guard/phases/` the first time you start a change.
+
+**Optional — the MCP server**, for hosts with no shell (Claude Desktop is the
+case it exists for): `cg setup --with-mcp` registers it. Every adapter works
+completely without it; MCP is an alternative transport, not a requirement.
+
+**Contributing** ([development](#development) has the rest):
 
 ```bash
 git clone https://github.com/fdomerlo/context-guard.git
-cd context-guard && uv venv && uv pip install -e .
+cd context-guard && uv venv && uv pip install -e ".[dev]"
 git config core.hooksPath .githooks   # activates the pre-commit gate below
 ```
-
-To wire up slash commands and permissions for your harness, run `cg setup`
-once per machine — see [Adapters](#adapters-and-permission-configuration)
-below. Phase files are written into each project by `cg new`.
 
 ## How it works
 

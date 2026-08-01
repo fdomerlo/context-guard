@@ -1,6 +1,7 @@
 # Context Guard
 
 [![CI](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/context-guard-cli)](https://pypi.org/project/context-guard-cli/)
 
 **La capa de memoria transaccional para agentes de codificación con IA — tu contexto sobrevive a crashes, compactación y pérdida de sesión.**
 
@@ -62,39 +63,33 @@ nada acá es un resumen ilustrativo.
 
 ## Instalación
 
-**Zero-install, vía `uvx`** — agregá esto a la config de tu cliente MCP
-(Claude Desktop, Antigravity, Cursor: `claude_desktop_config.json` /
-`mcp-settings.json`; OpenCode: `~/.config/opencode/opencode.jsonc`):
-
-```jsonc
-{
-  "mcpServers": {
-    "context-guard": {
-      "command": "uvx",
-      "args": ["git+https://github.com/fdomerlo/context-guard.git"]
-    }
-  }
-}
-```
-
-**Solo CLI**, para el binario `cg` sin cliente MCP:
+Dos líneas, una vez por máquina:
 
 ```bash
-uv pip install git+https://github.com/fdomerlo/context-guard.git
+pip install context-guard-cli
+cg setup
 ```
 
-**Local, editable**, para desarrollo:
+`cg setup` detecta Claude Code, OpenCode y Antigravity, instala los slash
+commands, y deja `cg approve` detrás del permission prompt de cada uno — ver
+[Adapters](#adapters-y-configuración-de-permisos). Imprime cada archivo que
+tocó, y correrlo de nuevo no cambia nada.
+
+Por proyecto no hay paso de instalación: `cg new` escribe las fases en
+`.context-guard/phases/` la primera vez que arrancás un change.
+
+**Opcional — el servidor MCP**, para hosts sin shell (Claude Desktop es el
+caso para el que existe): `cg setup --with-mcp` lo registra. Todos los
+adapters funcionan completos sin él; MCP es transporte alternativo, no
+requisito.
+
+**Para contribuir** (el resto está en [desarrollo](#desarrollo)):
 
 ```bash
 git clone https://github.com/fdomerlo/context-guard.git
-cd context-guard && uv venv && uv pip install -e .
+cd context-guard && uv venv && uv pip install -e ".[dev]"
 git config core.hooksPath .githooks   # activa el gate de pre-commit de más abajo
 ```
-
-Para instalar los slash commands y los permisos de tu harness, corré
-`cg setup` una vez por máquina — ver
-[Adapters](#adapters-y-configuración-de-permisos) más abajo. Las fases las
-escribe `cg new` en cada proyecto.
 
 ## Cómo funciona
 
