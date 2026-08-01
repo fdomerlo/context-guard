@@ -4,6 +4,9 @@
     "ask": [
       "Bash(cg approve*)",
       "Bash(context-guard approve*)"
+    ],
+    "deny": [
+      "Edit(.context-guard/**/manifest.json)"
     ]
   }
 }

@@ -26,6 +26,9 @@ Merge this into `.claude/settings.json` in the project (or into
     "ask": [
       "Bash(cg approve*)",
       "Bash(context-guard approve*)"
+    ],
+    "deny": [
+      "Edit(.context-guard/**/manifest.json)"
     ]
   }
 }
@@ -34,7 +37,9 @@ Merge this into `.claude/settings.json` in the project (or into
 `adapters/install.sh` merges it for you, preserving any entries already there.
 Both spellings are listed because the package installs two entrypoints; an
 allowlist that only names the short one is trivially sidestepped by using the
-long one.
+long one. The `deny` entry closes the other vector: an agent that cannot run
+`cg approve` unprompted could otherwise still write `"approval": {...}` into
+`manifest.json` directly and skip the whole protocol.
 
 ## What it looks like in practice
 

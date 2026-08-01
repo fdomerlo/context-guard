@@ -39,6 +39,7 @@ settings_path = f"{target_dir}/.claude/settings.json"
 with open(snippet_path, "r", encoding="utf-8") as f:
     snippet = json.load(f)
 ask_new = snippet["permissions"]["ask"]
+deny_new = snippet["permissions"].get("deny", [])
 
 try:
     with open(settings_path, "r", encoding="utf-8") as f:
@@ -51,6 +52,10 @@ ask = perms.setdefault("ask", [])
 for entry in ask_new:
     if entry not in ask:
         ask.append(entry)
+deny = perms.setdefault("deny", [])
+for entry in deny_new:
+    if entry not in deny:
+        deny.append(entry)
 
 with open(settings_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)

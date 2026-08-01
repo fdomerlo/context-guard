@@ -60,6 +60,15 @@ class TestClaudeCodeAdapter(unittest.TestCase):
             "settings.snippet.json must put cg approve on the ask list (PLAN.md 0.6)",
         )
 
+    def test_settings_snippet_denies_manifest_edits(self):
+        """F6 6.0.6: Claude Code never got the parity fix — editing
+        manifest.json by hand skips the whole transaction protocol without
+        ever touching a command the ask list would catch."""
+        text = self._read("settings.snippet.json")
+        data = json.loads(text)
+        deny_list = data.get("permissions", {}).get("deny", [])
+        self.assertIn("Edit(.context-guard/**/manifest.json)", deny_list)
+
     def test_no_dead_references(self):
         for name in ("commands/new.md", "commands/continue.md"):
             text = self._read(name).lower()
@@ -238,6 +247,45 @@ class TestOpenCodePermissionsAreInstalled(InstallShRunCase):
         self.assertEqual(
             cfg["permission"]["bash"]["cg approve*"], "ask",
         )
+
+
+class TestClaudeCodeDenyIsInstalled(InstallShRunCase):
+    def test_deny_list_is_merged_into_claude_settings(self):
+        res = self.run_install()
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        settings_path = os.path.join(self.target, ".claude", "settings.json")
+        with open(settings_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertIn(
+            "Edit(.context-guard/**/manifest.json)",
+            cfg.get("permissions", {}).get("deny", []),
+        )
+
+    def test_running_install_twice_does_not_duplicate_deny_entries(self):
+        self.run_install()
+        self.run_install()
+        settings_path = os.path.join(self.target, ".claude", "settings.json")
+        with open(settings_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        deny = cfg["permissions"]["deny"]
+        self.assertEqual(deny.count("Edit(.context-guard/**/manifest.json)"), 1)
+
+    def test_a_preexisting_deny_entry_survives(self):
+        """6.4: 'las configs previas del usuario sobreviven intactas' — a
+        deny rule the user already had for something unrelated must not be
+        clobbered by the merge."""
+        os.makedirs(os.path.join(self.target, ".claude"), exist_ok=True)
+        settings_path = os.path.join(self.target, ".claude", "settings.json")
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump({"permissions": {"deny": ["Bash(rm -rf /*)"]}}, f)
+
+        self.run_install()
+
+        with open(settings_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertIn("Bash(rm -rf /*)", cfg["permissions"]["deny"])
+        self.assertIn("Edit(.context-guard/**/manifest.json)", cfg["permissions"]["deny"])
 
 
 class TestInstallSh(unittest.TestCase):
