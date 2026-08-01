@@ -163,7 +163,7 @@ garantía de corrección, y viene con un bypass auditado
 | `cg new <nombre> --context <ruta>` | Crea un change y arranca PLAN |
 | `cg list --context <ruta>` | Lista los changes activos y su fase |
 | `cg begin --phase <FASE> --context <ruta>` | Inicia una transacción para la fase dada |
-| `cg approve --context <ruta> [--by <quién>] [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
+| `cg approve --context <ruta> --by <quién> [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
 | `cg commit --next-phase <FASE> --context <ruta>` | Valida los artefactos de la fase actual y avanza el DAG |
 | `cg rollback --context <ruta>` | Restaura el snapshot del manifest tomado en `begin` |
 | `cg checkpoint --summary "<texto>" --context <ruta>` | Persiste un resumen de sesión para retomar en caliente |

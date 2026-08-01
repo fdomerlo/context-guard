@@ -49,11 +49,12 @@ is retired; its repository now points here.
 
 ### Human approval gate
 
-- `cg approve --change <name> [--by <who>] [--hotfix --reason "<text>"]`
+- `cg approve --change <name> --by <who> [--hotfix --reason "<text>"]`
   records a human sign-off in the manifest. `commit --next-phase EXECUTE`
   refuses without one (`APPROVAL_REQUIRED`, exit 6). The approval is consumed
   by the commit it authorizes, so a later iteration of the plan needs a new
-  one.
+  one. `--by` is required — no default, so an agent-run approve cannot pass
+  silently as the environment's `$USER`.
 - `--hotfix` is the audited door out of the pipeline: it requires a reason,
   jumps straight to EXECUTE, and records PLAN as skipped rather than
   completed.

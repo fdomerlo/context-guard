@@ -192,14 +192,27 @@ class TestApproveAuditTrail(ApproveTestCase):
         self.assertEqual(approval["by"], "ci-pipeline")
         self.assertTrue(approval["at"])
 
-    def test_approve_without_by_still_names_someone(self):
-        """`--by` is optional per 1.5, so the default must never be empty —
-        an approval attributed to nobody is an unsigned approval."""
+    def test_approve_without_by_is_rejected(self):
+        """PLAN.md F7: defaulting to $USER made an agent-run `cg approve`
+        indistinguishable from a human-run one whenever the agent's shell
+        environment happened to report a plausible name. Requiring --by does
+        not authenticate anyone — an agent can still pass any string — but it
+        forces an active choice instead of silently inheriting the
+        environment, so the omission is visible rather than papered over."""
         self._planned_change("alpha")
 
-        cmd_approve(self.context, change="alpha")
+        res = cmd_approve(self.context, change="alpha")
 
-        self.assertTrue(load_manifest(self.context, "alpha")["approval"]["by"])
+        self.assertEqual(res.exit_code, EXIT_VALIDATION, res.message)
+        self.assertIsNone(load_manifest(self.context, "alpha").get("approval"))
+
+    def test_approve_with_empty_by_is_rejected(self):
+        """An empty string is not a name — the same gap as omitting it."""
+        self._planned_change("alpha")
+
+        res = cmd_approve(self.context, by="", change="alpha")
+
+        self.assertEqual(res.exit_code, EXIT_VALIDATION, res.message)
 
     def test_approve_on_a_context_without_session_fails(self):
         res = cmd_approve(self.context, by="fdomerlo", change="ghost")

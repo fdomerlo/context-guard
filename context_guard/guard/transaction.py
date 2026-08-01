@@ -98,9 +98,18 @@ def cmd_approve(context, by=None, hotfix=False, reason=None, change=None):
             EXIT_VALIDATION,
         )
 
-    # An approval attributed to nobody is an unsigned approval, so the default
-    # still names whoever the environment says is at the keyboard.
-    who = by or os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+    # Required, not defaulted to $USER: falling back to the environment made
+    # an agent-run `cg approve` indistinguishable from a human-run one
+    # whenever the shell happened to report a plausible name. This does not
+    # authenticate anyone — an agent can still pass any string — but it
+    # forces an active choice instead of silently inheriting one, so the
+    # omission is visible in the manifest rather than papered over.
+    who = (by or "").strip()
+    if not who:
+        return CommandResult(
+            "FAIL|BY_REQUIRED|pass --by <who>",
+            EXIT_VALIDATION,
+        )
 
     # Checked before taking the write lock: acquiring it would create the
     # change directory as a side effect, inventing the change the caller

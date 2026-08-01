@@ -163,7 +163,7 @@ unconditional block just gets `--no-verify`d, which leaves no trace at all.
 | `cg new <name> --context <path>` | Create a change and begin PLAN |
 | `cg list --context <path>` | List active changes and their phase |
 | `cg begin --phase <PHASE> --context <path>` | Start a transaction for the given phase |
-| `cg approve --context <path> [--by <who>] [--hotfix --reason "<text>"]` | Human-only: record the sign-off `commit` into EXECUTE requires |
+| `cg approve --context <path> --by <who> [--hotfix --reason "<text>"]` | Human-only: record the sign-off `commit` into EXECUTE requires |
 | `cg commit --next-phase <PHASE> --context <path>` | Validate the current phase's artifacts and advance the DAG |
 | `cg rollback --context <path>` | Restore the manifest snapshot taken at `begin` |
 | `cg checkpoint --summary "<text>" --context <path>` | Persist a session summary for warm-boot resume |
