@@ -24,6 +24,7 @@ from .manifest import (
 )
 from .paths import (
     DEFAULT_CHANGE,
+    get_archive_dir,
     get_base,
     get_changes_dir,
     get_paths,
@@ -235,6 +236,39 @@ def _migrate_flat_layout(context, findings):
     return None
 
 
+def _migrate_flat_archive(context, findings):
+    """Copy a 1.x flat layout's own archive/ subdirectories into
+    changes/archive/.
+
+    _migrate_flat_layout only ever copied files (`if os.path.isfile(src)`),
+    so a 1.x archive/ full of completed changes was silently left behind,
+    orphaned next to the new (empty) changes/archive/ — two archive
+    directories where the old one nothing pointed at anymore. Runs
+    independently of whether a flat manifest.json still exists, since the
+    archive can outlive it (e.g. the main manifest was already migrated by
+    an older `cg migrate` before this fix shipped).
+
+    Copies, not moves, like every other path in this module: if this
+    produces something wrong the original archive is still there.
+    """
+    old_archive = os.path.join(get_base(context), "archive")
+    if not os.path.isdir(old_archive):
+        return
+
+    new_archive = get_archive_dir(context)
+    for entry in sorted(os.listdir(old_archive)):
+        src = os.path.join(old_archive, entry)
+        if not os.path.isdir(src):
+            continue
+        dest = os.path.join(new_archive, entry)
+        if os.path.exists(dest):
+            findings.append(f"SKIP|archive/{entry}|already migrated")
+            continue
+        os.makedirs(new_archive, exist_ok=True)
+        shutil.copytree(src, dest)
+        findings.append(f"MIGRATED|archive/{entry}|from context-guard 1.x flat archive")
+
+
 def cmd_migrate(context):
     """Convierte los layouts legacy al layout multi-change.
 
@@ -246,6 +280,7 @@ def cmd_migrate(context):
     if conflict is not None:
         return conflict
 
+    _migrate_flat_archive(context, findings)
     _migrate_state_guard(context, findings)
 
     if not findings:

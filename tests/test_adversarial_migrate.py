@@ -200,6 +200,69 @@ class TestMigrateFlat1xLayout(MigrateTestCase):
         self.assertFalse(
             os.path.exists(os.path.join(get_base(self.context), "manifest.json")))
 
+    def _write_flat_1x_archive_entry(self, name):
+        """A completed change archived under the 1.x flat layout's own
+        archive/, e.g. .context-guard/archive/20260101_120000_old-change/ —
+        the same shape cmd_archive itself produced before multi-change moved
+        the destination to changes/archive/."""
+        entry_dir = os.path.join(get_base(self.context), "archive", name)
+        os.makedirs(entry_dir, exist_ok=True)
+        with open(os.path.join(entry_dir, "objective.md"), "w") as f:
+            f.write(f"# Objective\nArchived: {name}.\n")
+        with open(os.path.join(entry_dir, "manifest.json"), "w") as f:
+            json.dump({"lock_phase": "ARCHIVE", "completed_phases": ["PLAN", "EXECUTE", "VERIFY"]}, f)
+        return entry_dir
+
+    def test_flat_layout_archive_subdirectory_is_migrated(self):
+        """PLAN.md F7: the flat migration only copied files, never
+        subdirectories — a 1.x archive/ full of completed changes was left
+        behind untouched, orphaned next to the new (empty) changes/archive/."""
+        self.write_flat_1x_layout()
+        self._write_flat_1x_archive_entry("20260101_120000_old-change")
+
+        cmd_migrate(self.context)
+
+        migrated_entry = os.path.join(
+            get_changes_dir(self.context), "archive", "20260101_120000_old-change")
+        self.assertTrue(os.path.isdir(migrated_entry), "the 1.x archive entry was not migrated")
+        with open(os.path.join(migrated_entry, "objective.md")) as f:
+            self.assertIn("Archived: 20260101_120000_old-change", f.read())
+
+    def test_flat_archive_migration_leaves_the_original_in_place(self):
+        """Every other migration path here copies, never moves — the whole
+        module's safety rule is that a bad migration leaves the source
+        recoverable. The archive migration is not a special case."""
+        self.write_flat_1x_layout()
+        self._write_flat_1x_archive_entry("20260101_120000_old-change")
+
+        cmd_migrate(self.context)
+
+        self.assertTrue(os.path.isdir(
+            os.path.join(get_base(self.context), "archive", "20260101_120000_old-change")))
+
+    def test_flat_archive_migration_is_idempotent(self):
+        self.write_flat_1x_layout()
+        self._write_flat_1x_archive_entry("20260101_120000_old-change")
+
+        cmd_migrate(self.context)
+        second = cmd_migrate(self.context)
+
+        self.assertEqual(second.exit_code, EXIT_OK)
+        migrated_entry = os.path.join(
+            get_changes_dir(self.context), "archive", "20260101_120000_old-change")
+        self.assertTrue(os.path.isdir(migrated_entry))
+
+    def test_multiple_flat_archive_entries_all_migrate(self):
+        self.write_flat_1x_layout()
+        self._write_flat_1x_archive_entry("20260101_120000_first")
+        self._write_flat_1x_archive_entry("20260102_120000_second")
+
+        cmd_migrate(self.context)
+
+        archive_root = os.path.join(get_changes_dir(self.context), "archive")
+        self.assertIn("20260101_120000_first", os.listdir(archive_root))
+        self.assertIn("20260102_120000_second", os.listdir(archive_root))
+
 
 class TestMigrateStateGuardIni(MigrateTestCase):
     def test_state_ini_becomes_a_change(self):
