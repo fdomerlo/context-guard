@@ -11,6 +11,12 @@ requires-python = ">=3.10"
 license = "MIT"
 dependencies = ["mcp>=1.0.0,<2.0.0"]
 
+[project.optional-dependencies]
+# Build backend and frontend, needed only by tests/test_packaging.py, which
+# builds real artifacts to prove the packaged data is actually inside them.
+# Not a runtime dependency: the suite skips those tests when they are absent.
+dev = ["build>=1.0", "hatchling"]
+
 [project.scripts]
 context-guard = "context_guard.guard.cli:main"
 cg = "context_guard.guard.cli:main"
