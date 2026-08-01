@@ -714,6 +714,31 @@ class TestWithAntigravityHookFlag(InstallShRunCase):
         self.assertIn("run_command", tools)
 
 
+class TestFinalFileSummary(InstallShRunCase):
+    """PLAN.md F6 6.2: "--uninstall queda fuera de scope (backlog), pero el
+    installer imprime al final la lista exacta de archivos que tocó" — with
+    no uninstall command, the printed list is the only way to know what to
+    remove by hand."""
+
+    def test_summary_lists_every_file_touched(self):
+        res = self.run_install("--host", "claude", "--with-mcp")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        for relpath in (
+            ".claude/commands/cg-new.md",
+            ".claude/commands/cg-continue.md",
+            ".claude/settings.json",
+            ".mcp.json",
+        ):
+            with self.subTest(file=relpath):
+                self.assertIn(relpath, res.stdout)
+
+    def test_summary_only_lists_hosts_actually_installed(self):
+        res = self.run_install("--host", "claude")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn(".opencode/", res.stdout)
+        self.assertNotIn(".agents/", res.stdout)
+
+
 class TestAcceptanceCriteria(InstallShRunCase):
     """PLAN.md F6 acceptance criteria #2 and #3, checked literally rather
     than piecemeal. FORCE_OPENCODE/FORCE_ANTIGRAVITY stand in for real

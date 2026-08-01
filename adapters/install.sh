@@ -105,6 +105,9 @@ elif [[ "$HOST" == "all" && ( -d "$HOME/.gemini" || "${FORCE_ANTIGRAVITY:-}" == 
     install_antigravity=1
 fi
 
+TOUCHED=()
+record() { TOUCHED+=("$1"); }
+
 echo "Installing context-guard adapters into $TARGET_DIR ..."
 
 # 1. Claude Code: slash commands + phases, per project
@@ -112,6 +115,12 @@ if [[ "$install_claude" == "1" ]]; then
 mkdir -p "$TARGET_DIR/.claude/commands" "$TARGET_DIR/.context-guard/phases"
 cp "$SCRIPT_DIR/claude-code/commands/"*.md "$TARGET_DIR/.claude/commands/"
 cp "$PHASES_SRC/"*.md "$TARGET_DIR/.context-guard/phases/"
+for f in "$SCRIPT_DIR/claude-code/commands/"*.md; do
+    record ".claude/commands/$(basename "$f")"
+done
+for f in "$PHASES_SRC/"*.md; do
+    record ".context-guard/phases/$(basename "$f")"
+done
 echo "  -> Claude Code: commands in .claude/commands/, phases in .context-guard/phases/"
 
 python3 - "$TARGET_DIR" "$SCRIPT_DIR/claude-code/settings.snippet.json" <<'PY'
@@ -146,6 +155,7 @@ with open(settings_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
+record ".claude/settings.json"
 echo "  -> Claude Code: cg approve added to the ask list in .claude/settings.json"
 echo "     (what that prompt does and does not guarantee: adapters/claude-code/PERMISSIONS.md)"
 
@@ -171,6 +181,7 @@ with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
+    record ".mcp.json"
     echo "  -> Claude Code: context-guard-mcp registered in .mcp.json"
 fi
 else
@@ -186,6 +197,9 @@ OPENCODE_CFG="$TARGET_DIR/opencode.json"
 if [[ "$install_opencode" == "1" ]]; then
     mkdir -p "$TARGET_DIR/.opencode/commands"
     cp "$SCRIPT_DIR/opencode/commands/"*.md "$TARGET_DIR/.opencode/commands/"
+    for f in "$SCRIPT_DIR/opencode/commands/"*.md; do
+        record ".opencode/commands/$(basename "$f")"
+    done
 
     python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/agent.snippet.json" "$SCRIPT_DIR/opencode/permissions.snippet.json" <<'PY'
 import json
@@ -221,6 +235,7 @@ with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
+    record "opencode.json"
     if [[ "$WITH_MCP" == "1" ]]; then
         python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/mcp.snippet.json" <<'PY'
 import json
@@ -260,6 +275,7 @@ fi
 if [[ "$install_antigravity" == "1" ]]; then
     mkdir -p "$TARGET_DIR/.agents/rules"
     cp "$SCRIPT_DIR/antigravity/rules/context-guard.md" "$TARGET_DIR/.agents/rules/context-guard.md"
+    record ".agents/rules/context-guard.md"
     echo "  -> Antigravity: rule installed at .agents/rules/context-guard.md"
     echo "     (permission setup, unverified against a real host: adapters/antigravity/PERMISSIONS.md)"
 
@@ -294,6 +310,7 @@ with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
+        record "$ANTIGRAVITY_HOOKS_CFG (user config, not project)"
         echo "  -> Antigravity: deny hook merged into ~/.gemini/config/hooks.json"
     fi
 elif [[ "$HOST" == "all" ]]; then
@@ -302,4 +319,13 @@ else
     echo "  -> Antigravity: skipped (--host $HOST)"
 fi
 
+echo ""
+echo "Files touched:"
+if [[ ${#TOUCHED[@]} -eq 0 ]]; then
+    echo "  (none)"
+else
+    for f in "${TOUCHED[@]}"; do
+        echo "  $f"
+    done
+fi
 echo "Done."
