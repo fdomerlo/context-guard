@@ -40,31 +40,11 @@ class ManifestCorruptError(GuardError):
         super().__init__(f"FAIL|CORRUPT_MANIFEST|{message}", EXIT_GENERIC)
 
 
-class LockHeldError(GuardError):
-    """El lock de sesión está ocupado por otro agente."""
-    def __init__(self, owner=None):
-        msg = f"FAIL|LOCK_HELD|{owner}" if owner else "FAIL|LOCK_HELD"
-        super().__init__(msg, EXIT_LOCK_HELD)
-
-
-class LockContendedError(GuardError):
-    """Otro agente ganó la carrera por un lock stale."""
-    def __init__(self):
-        super().__init__("FAIL|LOCK_CONTENDED", EXIT_LOCK_CONTENDED)
-
-
 class ValidationError(GuardError):
     """Un artefacto no pasó validación (faltante, excede cap, etc.)."""
     def __init__(self, failures):
         msg = "\n".join(f"FAIL|{f}" for f in failures)
         super().__init__(msg, EXIT_VALIDATION)
-
-
-class BadTransitionError(GuardError):
-    """Transición inválida en el pipeline de estados."""
-    def __init__(self, current_phase, next_phase, expected_next):
-        msg = f"FAIL|BAD_TRANSITION|from={current_phase}|to={next_phase}|expected={expected_next}"
-        super().__init__(msg, EXIT_BAD_TRANSITION)
 
 
 class AmbiguousChangeError(GuardError):
@@ -75,12 +55,6 @@ class AmbiguousChangeError(GuardError):
     """
     def __init__(self, message):
         super().__init__(message, EXIT_VALIDATION)
-
-
-class NoActiveChangeError(GuardError):
-    """El change pedido no existe en este contexto."""
-    def __init__(self, change):
-        super().__init__(f"FAIL|NO_SUCH_CHANGE|{change}", EXIT_GENERIC)
 
 
 class LegacyLayoutError(GuardError):

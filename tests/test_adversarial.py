@@ -86,12 +86,14 @@ class TestExitCodeContract(unittest.TestCase):
 
     def test_typed_exceptions_carry_the_unified_codes(self):
         """The exception classes are a second source of truth for the same
-        table — they must not drift from the constants."""
+        table — they must not drift from the constants. Only the classes
+        actually raised somewhere in production code are checked here;
+        LockHeldError/LockContendedError/BadTransitionError/
+        NoActiveChangeError were defined but never raised (LOCK_HELD,
+        LOCK_CONTENDED, and BAD_TRANSITION are all reported via CommandResult
+        instead) and were deleted in F8's dead-code sweep."""
         self.assertEqual(errors.ManifestCorruptError("x").exit_code, 1)
-        self.assertEqual(errors.LockHeldError("agent").exit_code, 2)
-        self.assertEqual(errors.LockContendedError().exit_code, 3)
         self.assertEqual(errors.ValidationError(["MISSING|x"]).exit_code, 4)
-        self.assertEqual(errors.BadTransitionError("PLAN", "VERIFY", "EXECUTE").exit_code, 5)
 
 
 class TestPhaseAuthorizationBypass(unittest.TestCase):

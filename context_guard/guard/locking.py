@@ -16,7 +16,6 @@ from .errors import (
     EXIT_OK,
     EXIT_LOCK_HELD,
     EXIT_LOCK_CONTENDED,
-    LockContendedError,
 )
 
 

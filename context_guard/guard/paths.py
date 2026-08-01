@@ -5,7 +5,7 @@ import re
 import socket
 import time
 
-from .errors import AmbiguousChangeError, LegacyLayoutError, NoActiveChangeError
+from .errors import AmbiguousChangeError, LegacyLayoutError
 
 # ---------------------------------------------------------------------------
 # Constantes
