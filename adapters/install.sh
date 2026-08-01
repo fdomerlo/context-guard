@@ -4,24 +4,93 @@ set -euo pipefail
 # ============================================================================
 # Context Guard: adapter installer (Claude Code / OpenCode / Antigravity)
 # ============================================================================
-# Pass the target project as the first argument, default is the current
-# directory. All three hosts install per-project.
+# Pass the target project as the first positional argument, default is the
+# current directory. All three hosts install per-project.
+#
+#   ./install.sh [target-project-dir] [--host claude|opencode|antigravity|all]
+#
+# --host all (the default) keeps the existing detect-and-skip behavior per
+# host. Naming a single host installs it unconditionally — asking for it
+# explicitly is itself the signal, so detection does not apply.
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-    echo "Usage: ./install.sh [target-project-dir]"
+usage() {
+    echo "Usage: ./install.sh [target-project-dir] [--host claude|opencode|antigravity|all]"
     echo "Installs the context-guard adapters for Claude Code, OpenCode, and"
     echo "Antigravity, all per-project."
-    exit 0
-fi
+    echo "  --host <name>  Install only this host, regardless of detection."
+    echo "                 One of: claude, opencode, antigravity, all (default: all)."
+}
 
-TARGET_DIR="$(cd "${1:-.}" && pwd)"
+TARGET_ARG="."
+HOST="all"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --host)
+            if [[ $# -lt 2 ]]; then
+                echo "error: --host requires a value" >&2
+                exit 1
+            fi
+            HOST="$2"
+            shift 2
+            ;;
+        --host=*)
+            HOST="${1#--host=}"
+            shift
+            ;;
+        -*)
+            echo "error: unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            TARGET_ARG="$1"
+            shift
+            ;;
+    esac
+done
+
+case "$HOST" in
+    claude|opencode|antigravity|all) ;;
+    *)
+        echo "error: invalid --host '$HOST' (expected claude|opencode|antigravity|all)" >&2
+        exit 1
+        ;;
+esac
+
+TARGET_DIR="$(cd "$TARGET_ARG" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 PHASES_SRC="$REPO_DIR/phases"
 
+# A host installs if it was named explicitly, or if --host all left
+# detection to decide. install_claude has no detection leg: Claude Code
+# always installs under --host all, matching the pre-6.2 behavior.
+install_claude=0
+[[ "$HOST" == "claude" || "$HOST" == "all" ]] && install_claude=1
+
+install_opencode=0
+if [[ "$HOST" == "opencode" ]]; then
+    install_opencode=1
+elif [[ "$HOST" == "all" && ( -d "$HOME/.config/opencode" || "${FORCE_OPENCODE:-}" == "1" ) ]]; then
+    install_opencode=1
+fi
+
+install_antigravity=0
+if [[ "$HOST" == "antigravity" ]]; then
+    install_antigravity=1
+elif [[ "$HOST" == "all" && ( -d "$HOME/.gemini" || "${FORCE_ANTIGRAVITY:-}" == "1" ) ]]; then
+    install_antigravity=1
+fi
+
 echo "Installing context-guard adapters into $TARGET_DIR ..."
 
 # 1. Claude Code: slash commands + phases, per project
+if [[ "$install_claude" == "1" ]]; then
 mkdir -p "$TARGET_DIR/.claude/commands" "$TARGET_DIR/.context-guard/phases"
 cp "$SCRIPT_DIR/claude-code/commands/"*.md "$TARGET_DIR/.claude/commands/"
 cp "$PHASES_SRC/"*.md "$TARGET_DIR/.context-guard/phases/"
@@ -61,6 +130,9 @@ with open(settings_path, "w", encoding="utf-8") as f:
 PY
 echo "  -> Claude Code: cg approve added to the ask list in .claude/settings.json"
 echo "     (what that prompt does and does not guarantee: adapters/claude-code/PERMISSIONS.md)"
+else
+    echo "  -> Claude Code: skipped (--host $HOST)"
+fi
 
 # 2. OpenCode: install per-project, mirroring Claude Code — commands and
 # config both live in the target project, not in $HOME. The old per-user
@@ -68,7 +140,7 @@ echo "     (what that prompt does and does not guarantee: adapters/claude-code/P
 # directory (an absolute path that breaks the moment the clone moves) and
 # merged into the host's global config instead of the project's.
 OPENCODE_CFG="$TARGET_DIR/opencode.json"
-if [[ -d "$HOME/.config/opencode" || "${FORCE_OPENCODE:-}" == "1" ]]; then
+if [[ "$install_opencode" == "1" ]]; then
     mkdir -p "$TARGET_DIR/.opencode/commands"
     cp "$SCRIPT_DIR/opencode/commands/"*.md "$TARGET_DIR/.opencode/commands/"
 
@@ -108,8 +180,10 @@ with open(config_path, "w", encoding="utf-8") as f:
 PY
     echo "  -> OpenCode: commands in .opencode/commands/, config merged into opencode.json"
     echo "     (permission setup, unverified against a real host: adapters/opencode/PERMISSIONS.md)"
+elif [[ "$HOST" == "all" ]]; then
+    echo "  -> OpenCode: not detected, skipped (pass FORCE_OPENCODE=1 or --host opencode to install anyway)"
 else
-    echo "  -> OpenCode: no ~/.config/opencode found, skipped (pass FORCE_OPENCODE=1 to install anyway)"
+    echo "  -> OpenCode: skipped (--host $HOST)"
 fi
 
 # 3. Antigravity: install the rule file into the target project. The old
@@ -117,13 +191,15 @@ fi
 # which contaminated every project the user has with a control meant to
 # apply to this one. The workspace rule file is read by IDE, CLI, and
 # Manager alike, and travels with the repo instead of the user's machine.
-if [[ -d "$HOME/.gemini" || "${FORCE_ANTIGRAVITY:-}" == "1" ]]; then
+if [[ "$install_antigravity" == "1" ]]; then
     mkdir -p "$TARGET_DIR/.agents/rules"
     cp "$SCRIPT_DIR/antigravity/rules/context-guard.md" "$TARGET_DIR/.agents/rules/context-guard.md"
     echo "  -> Antigravity: rule installed at .agents/rules/context-guard.md"
     echo "     (permission setup, unverified against a real host: adapters/antigravity/PERMISSIONS.md)"
+elif [[ "$HOST" == "all" ]]; then
+    echo "  -> Antigravity: not detected, skipped (pass FORCE_ANTIGRAVITY=1 or --host antigravity to install anyway)"
 else
-    echo "  -> Antigravity: no ~/.gemini found, skipped (pass FORCE_ANTIGRAVITY=1 to install anyway)"
+    echo "  -> Antigravity: skipped (--host $HOST)"
 fi
 
 echo "Done."

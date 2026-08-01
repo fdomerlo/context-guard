@@ -459,6 +459,49 @@ class TestAntigravityInstallsPerProject(InstallShRunCase):
         self.assertEqual(first, second)
 
 
+class TestHostFlagSelectsWhichHostsInstall(InstallShRunCase):
+    """F6 6.0.9/6.2: install.sh always installed "everything detected" with
+    no way to ask for just one host. --host all (the default) keeps that
+    detection-as-filter behavior; naming a single host forces it regardless
+    of detection, since asking for it explicitly is itself the signal."""
+
+    def test_default_is_host_all(self):
+        res = self.run_install()
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".claude", "commands")))
+
+    def test_host_claude_installs_only_claude_code(self):
+        res = self.run_install("--host", "claude")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".claude", "commands")))
+        self.assertFalse(os.path.exists(os.path.join(self.target, ".opencode")))
+        self.assertFalse(os.path.exists(os.path.join(self.target, ".agents")))
+
+    def test_host_opencode_forces_install_without_detection(self):
+        """No FORCE_OPENCODE and no ~/.config/opencode in the fake HOME —
+        explicitly asking for this host must install it anyway."""
+        res = self.run_install("--host", "opencode")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".opencode", "commands", "cg-new.md")))
+        self.assertFalse(os.path.exists(os.path.join(self.target, ".claude")))
+
+    def test_host_antigravity_forces_install_without_detection(self):
+        res = self.run_install("--host", "antigravity")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".agents", "rules", "context-guard.md")))
+        self.assertFalse(os.path.exists(os.path.join(self.target, ".claude")))
+
+    def test_invalid_host_value_is_rejected(self):
+        res = self.run_install("--host", "bogus")
+        self.assertNotEqual(res.returncode, 0)
+        self.assertIn("bogus", res.stderr)
+
+    def test_help_documents_the_host_flag(self):
+        res = subprocess.run(["bash", INSTALL_SH, "--help"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("--host", res.stdout)
+
+
 class TestInstallSh(unittest.TestCase):
     def setUp(self):
         self.assertTrue(os.path.exists(INSTALL_SH), "adapters/install.sh is missing")
