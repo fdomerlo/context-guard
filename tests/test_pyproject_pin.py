@@ -2,9 +2,9 @@ import os
 import re
 import unittest
 
-PYPROJECT_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pyproject.toml"
-)
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PYPROJECT_PATH = os.path.join(REPO_ROOT, "pyproject.toml")
+REQUIREMENTS_PATH = os.path.join(REPO_ROOT, "requirements.txt")
 
 
 class TestPyprojectPin(unittest.TestCase):
@@ -37,6 +37,23 @@ class TestPyprojectPin(unittest.TestCase):
         match = re.search(r'^cg\s*=\s*"([^"]*)"', self.text, re.MULTILINE)
         self.assertIsNotNone(match, "cg short entrypoint not declared")
         self.assertEqual(match.group(1), "context_guard.guard.cli:main")
+
+
+class TestNoStrayRequirementsFile(unittest.TestCase):
+    """PLAN.md F7: requirements.txt carried `mcp>=1.0.0` with no upper bound —
+    the exact drift F0 fixed in pyproject.toml, surviving unpinned in the file
+    next to it, consumed by nothing in this repo (no CI job, no doc, no
+    script referenced it). pyproject.toml is the single source of truth;
+    anyone installing via requirements.txt would silently get mcp 2.0 the
+    day it ships. Deleted rather than pinned, per PLAN.md's own preference —
+    a second file to keep in sync is the drift risk, not the fix."""
+
+    def test_requirements_txt_does_not_exist(self):
+        self.assertFalse(
+            os.path.exists(REQUIREMENTS_PATH),
+            "requirements.txt should not exist — pyproject.toml is the "
+            "single source of truth for dependencies (PLAN.md F7)",
+        )
 
 
 if __name__ == "__main__":
