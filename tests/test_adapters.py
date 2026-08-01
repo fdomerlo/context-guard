@@ -4,6 +4,7 @@ install.sh which wires them into a target project."""
 
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -14,7 +15,9 @@ import unittest
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADAPTERS_DIR = os.path.join(REPO_ROOT, "adapters")
 CLAUDE_CODE_DIR = os.path.join(ADAPTERS_DIR, "claude-code")
+OPENCODE_DIR = os.path.join(ADAPTERS_DIR, "opencode")
 INSTALL_SH = os.path.join(ADAPTERS_DIR, "install.sh")
+ABS_PATH_RE = re.compile(r"/home/|/Users/")
 
 DEAD_TERMS = ("watchdog", "hook_daemon", "/dev/tty", "sha-256", "sha256")
 
@@ -146,6 +149,60 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
         )
 
 
+class TestOpenCodeAdapterIsPerProject(unittest.TestCase):
+    """F6 6.0.1/6.0.7/6.1: OpenCode's adapter mirrors Claude Code's — commands
+    installed into the target project, not generated into $HOME pointing at
+    the repo clone's own phases/ directory."""
+
+    def _read(self, relpath):
+        path = os.path.join(OPENCODE_DIR, relpath)
+        self.assertTrue(os.path.exists(path), f"adapters/opencode/{relpath} is missing")
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_cg_new_and_cg_continue_commands_exist(self):
+        for name in ("cg-new.md", "cg-continue.md"):
+            self._read(os.path.join("commands", name))
+
+    def test_commands_stay_thin(self):
+        for name in ("cg-new.md", "cg-continue.md"):
+            text = self._read(os.path.join("commands", name))
+            line_count = len(text.splitlines())
+            self.assertLessEqual(line_count, 20, f"commands/{name} has {line_count} lines")
+
+    def test_commands_point_at_phases_not_duplicate_them(self):
+        new_text = self._read(os.path.join("commands", "cg-new.md"))
+        self.assertIn("phases/plan.md", new_text)
+        continue_text = self._read(os.path.join("commands", "cg-continue.md"))
+        for phase_file in ("phases/plan.md", "phases/execute.md", "phases/verify.md"):
+            self.assertIn(phase_file, continue_text)
+
+    def test_cg_continue_injects_status_via_shell_templating(self):
+        """PLAN.md 6.1: state injected in the prompt so the agent starts with
+        real state, no tool-calling round trip needed."""
+        text = self._read(os.path.join("commands", "cg-continue.md"))
+        self.assertIn("!`cg status", text)
+
+    def test_commands_carry_no_absolute_path(self):
+        for name in ("cg-new.md", "cg-continue.md"):
+            text = self._read(os.path.join("commands", name))
+            self.assertNotRegex(text, ABS_PATH_RE, f"commands/{name} embeds an absolute path")
+
+
+class TestClaudeCodeAndOpenCodeExposeTheSameCommands(unittest.TestCase):
+    def test_same_two_command_names(self):
+        claude_names = {
+            f for f in os.listdir(os.path.join(CLAUDE_CODE_DIR, "commands"))
+            if f.endswith(".md")
+        }
+        opencode_names = {
+            f for f in os.listdir(os.path.join(OPENCODE_DIR, "commands"))
+            if f.endswith(".md")
+        }
+        self.assertEqual(claude_names, opencode_names)
+        self.assertEqual(claude_names, {"cg-new.md", "cg-continue.md"})
+
+
 class TestNoStaleSlashCommandReferences(unittest.TestCase):
     """F6 6.0.7: renaming /new -> /cg-new and /continue -> /cg-continue is
     only a fix if nothing else in the repo still points at the old names —
@@ -242,38 +299,6 @@ class InstallShRunCase(unittest.TestCase):
         )
 
 
-class TestOpenCodePermissionsAreInstalled(InstallShRunCase):
-    def test_permissions_snippet_is_merged_into_the_opencode_config(self):
-        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        cfg_path = os.path.join(self.home, ".config", "opencode", "opencode.jsonc")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-
-        self.assertEqual(
-            cfg.get("permission", {}).get("edit", {}).get(".context-guard/**/manifest.json"),
-            "deny",
-        )
-        self.assertNotIn(
-            "tools", cfg.get("agent", {}).get("context-guard", {}),
-            "the deprecated tools key must not be installed into the target config",
-        )
-
-    def test_running_install_twice_does_not_duplicate_permission_entries(self):
-        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        cfg_path = os.path.join(self.home, ".config", "opencode", "opencode.jsonc")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        # A dict merge is duplicate-proof by construction; this pins that a
-        # future rewrite of the merge does not regress to a list-append that
-        # would grow unboundedly across reinstalls.
-        self.assertEqual(
-            cfg["permission"]["bash"]["cg approve*"], "ask",
-        )
 
 
 class TestClaudeCodeDenyIsInstalled(InstallShRunCase):
@@ -313,6 +338,69 @@ class TestClaudeCodeDenyIsInstalled(InstallShRunCase):
             cfg = json.load(f)
         self.assertIn("Bash(rm -rf /*)", cfg["permissions"]["deny"])
         self.assertIn("Edit(.context-guard/**/manifest.json)", cfg["permissions"]["deny"])
+
+
+class TestOpenCodeInstallsPerProject(InstallShRunCase):
+    """F6 6.0.1: the bug this closes — commands generated into
+    $HOME/.config/opencode/commands/ read $PHASES_SRC, the absolute path of
+    whatever repo clone install.sh was run from. Move the clone or delete
+    it and every installed command breaks; and it read the repo's own
+    phases/, not the copy install.sh puts in the target project."""
+
+    def test_commands_land_in_the_target_project(self):
+        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        for name in ("cg-new.md", "cg-continue.md"):
+            self.assertTrue(
+                os.path.exists(os.path.join(self.target, ".opencode", "commands", name)),
+                f".opencode/commands/{name} was not installed into the target project",
+            )
+
+    def test_nothing_is_written_under_home(self):
+        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertFalse(
+            os.path.exists(os.path.join(self.home, ".config", "opencode", "commands")),
+            "OpenCode commands must not be generated into $HOME anymore",
+        )
+
+    def test_installed_commands_carry_no_absolute_repo_path(self):
+        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        commands_dir = os.path.join(self.target, ".opencode", "commands")
+        for name in os.listdir(commands_dir):
+            with open(os.path.join(commands_dir, name), "r", encoding="utf-8") as f:
+                text = f.read()
+            self.assertNotRegex(text, ABS_PATH_RE, f"{name} embeds an absolute path")
+
+    def test_config_is_merged_into_the_project_opencode_json(self):
+        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        cfg_path = os.path.join(self.target, "opencode.json")
+        self.assertTrue(os.path.exists(cfg_path), "opencode.json was not written to the target project")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertIn("context-guard", cfg.get("agent", {}))
+        self.assertEqual(
+            cfg["permission"]["edit"][".context-guard/**/manifest.json"], "deny",
+        )
+        self.assertNotIn(
+            "tools", cfg.get("agent", {}).get("context-guard", {}),
+            "the deprecated tools key must not be installed into the target config",
+        )
+
+    def test_running_install_twice_does_not_duplicate_permission_entries(self):
+        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        cfg_path = os.path.join(self.target, "opencode.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        # A dict merge is duplicate-proof by construction; this pins that a
+        # future rewrite of the merge does not regress to a list-append that
+        # would grow unboundedly across reinstalls.
+        self.assertEqual(cfg["permission"]["bash"]["cg approve*"], "ask")
 
 
 class TestInstallSh(unittest.TestCase):

@@ -4,15 +4,15 @@ set -euo pipefail
 # ============================================================================
 # Context Guard: adapter installer (Claude Code / OpenCode / Antigravity)
 # ============================================================================
-# Claude Code adapter installs per-project (Claude Code's own convention for
-# team-shared slash commands): pass the target project as the first
-# argument, default is the current directory. OpenCode and Antigravity
-# adapters install per-user, matching how those hosts read their config.
+# Pass the target project as the first argument, default is the current
+# directory. Claude Code and OpenCode install per-project. Antigravity still
+# installs per-user (see adapters/antigravity/PERMISSIONS.md) until its own
+# per-project migration lands.
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "Usage: ./install.sh [target-project-dir]"
-    echo "Installs the context-guard adapters for Claude Code (per-project),"
-    echo "OpenCode, and Antigravity (both per-user)."
+    echo "Installs the context-guard adapters for Claude Code and OpenCode"
+    echo "(both per-project), and Antigravity (per-user)."
     exit 0
 fi
 
@@ -64,10 +64,16 @@ PY
 echo "  -> Claude Code: cg approve added to the ask list in .claude/settings.json"
 echo "     (what that prompt does and does not guarantee: adapters/claude-code/PERMISSIONS.md)"
 
-# 2. OpenCode: register the agent + generate one slash command per phase file, per user
-OPENCODE_CFG="$HOME/.config/opencode/opencode.jsonc"
+# 2. OpenCode: install per-project, mirroring Claude Code — commands and
+# config both live in the target project, not in $HOME. The old per-user
+# commands were generated pointing at this repo clone's own phases/
+# directory (an absolute path that breaks the moment the clone moves) and
+# merged into the host's global config instead of the project's.
+OPENCODE_CFG="$TARGET_DIR/opencode.json"
 if [[ -d "$HOME/.config/opencode" || "${FORCE_OPENCODE:-}" == "1" ]]; then
-    mkdir -p "$(dirname "$OPENCODE_CFG")" "$HOME/.config/opencode/commands"
+    mkdir -p "$TARGET_DIR/.opencode/commands"
+    cp "$SCRIPT_DIR/opencode/commands/"*.md "$TARGET_DIR/.opencode/commands/"
+
     python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/agent.snippet.json" "$SCRIPT_DIR/opencode/permissions.snippet.json" <<'PY'
 import json
 import re
@@ -102,17 +108,7 @@ with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
-    for phase_file in "$PHASES_SRC"/*.md; do
-        phase_name=$(basename "$phase_file" .md)
-        cat > "$HOME/.config/opencode/commands/${phase_name}.md" <<EOF
----
-description: "Run the ${phase_name} phase"
-agent: context-guard
----
-Read $PHASES_SRC/${phase_name}.md and follow its instructions exactly.
-EOF
-    done
-    echo "  -> OpenCode: agent registered, phase commands generated"
+    echo "  -> OpenCode: commands in .opencode/commands/, config merged into opencode.json"
     echo "     (permission setup, unverified against a real host: adapters/opencode/PERMISSIONS.md)"
 else
     echo "  -> OpenCode: no ~/.config/opencode found, skipped (pass FORCE_OPENCODE=1 to install anyway)"
