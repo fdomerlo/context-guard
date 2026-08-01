@@ -71,6 +71,21 @@ def _normalise_phase_list(value):
     return out
 
 
+def _split_recognised_phases(phases):
+    """Separate phases this pipeline knows about from ones it does not.
+
+    state-guard tracked pseudo-phases (a 'hotfix' bypass state, in the audit
+    that found this) that are not PLAN/EXECUTE/VERIFY. Carrying one straight
+    into completed_phases plants a value no future DAG invariant check would
+    expect. Silently dropping it would be just as wrong — it is real history
+    the user might want back — so the unrecognised ones go to legacy_phases
+    instead of vanishing.
+    """
+    recognised = [p for p in phases if p in DEFAULT_PIPELINE]
+    unrecognised = [p for p in phases if p not in DEFAULT_PIPELINE]
+    return recognised, unrecognised
+
+
 def _state_guard_changes_dir(context):
     return os.path.join(get_root(context), STATE_GUARD_DIRNAME, "changes")
 
@@ -98,8 +113,9 @@ def _manifest_from_state_ini(context, change, ini_path):
 
     current = _normalise_phase(config.get("Graph", "current_phase", fallback=None))
     lock_phase = _normalise_phase(config.get("Graph", "lock_phase", fallback=None))
-    completed = _normalise_phase_list(
+    completed_raw = _normalise_phase_list(
         config.get("Graph", "completed_phases", fallback=""))
+    completed, legacy_phases = _split_recognised_phases(completed_raw)
     pending = _normalise_phase_list(
         config.get("Graph", "pending_phases", fallback=""))
 
@@ -109,6 +125,8 @@ def _manifest_from_state_ini(context, change, ini_path):
     manifest["pending_phases"] = pending or [
         p for p in DEFAULT_PIPELINE if p not in completed
     ]
+    if legacy_phases:
+        manifest["legacy_phases"] = legacy_phases
 
     summary = config.get("Session", "session_summary", fallback="").strip()
     if summary:

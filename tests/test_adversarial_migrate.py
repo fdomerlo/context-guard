@@ -236,6 +236,36 @@ class TestMigrateStateGuardIni(MigrateTestCase):
         self.assertEqual(m["current_phase"], "PLAN")
         self.assertEqual(m["completed_phases"], [])
 
+    def test_unrecognised_completed_phase_goes_to_legacy_phases(self):
+        """PLAN.md F7: state-guard tracked pseudo-phases this pipeline never
+        had (a 'hotfix' bypass state, in the audit that found this). Carrying
+        it into completed_phases verbatim plants a value no DAG invariant
+        check here would ever expect — harmless today only because nothing
+        validates completed_phases against the pipeline yet. Silently
+        dropping it would be just as wrong: it is real history the user
+        might want back, so it goes to legacy_phases instead of vanishing."""
+        self.write_state_guard_change("add-oauth", lock_phase="verify",
+                                      completed="plan,hotfix", current="execute")
+
+        cmd_migrate(self.context)
+
+        m = load_manifest(self.context, "add-oauth")
+        self.assertEqual(m["completed_phases"], ["PLAN"])
+        self.assertNotIn("HOTFIX", m["completed_phases"])
+        self.assertEqual(m.get("legacy_phases"), ["HOTFIX"])
+
+    def test_recognised_completed_phases_still_land_correctly(self):
+        """The filter must not eat real pipeline phases along with the
+        unrecognised ones."""
+        self.write_state_guard_change("add-oauth", lock_phase="verify",
+                                      completed="plan,execute", current="execute")
+
+        cmd_migrate(self.context)
+
+        m = load_manifest(self.context, "add-oauth")
+        self.assertEqual(m["completed_phases"], ["PLAN", "EXECUTE"])
+        self.assertNotIn("legacy_phases", m)
+
     def test_session_summary_is_preserved(self):
         """The summary is the warm-boot state; losing it defeats the point."""
         self.write_state_guard_change("add-oauth")
