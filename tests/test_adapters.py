@@ -787,6 +787,36 @@ class TestAcceptanceCriteria(InstallShRunCase):
         self.assertEqual(opencode_cfg["my_setting"], "keep-me")
 
 
+class TestVerifyChecklist(unittest.TestCase):
+    """F6 6.3/acceptance criterion 4: a repeatable manual smoke-test
+    checklist, since none of the adapters' real host interaction (menus,
+    permission prompts) can be observed from a subprocess test."""
+
+    PATH = os.path.join(ADAPTERS_DIR, "VERIFY.md")
+
+    def setUp(self):
+        self.assertTrue(os.path.exists(self.PATH), "adapters/VERIFY.md is missing")
+        with open(self.PATH, "r", encoding="utf-8") as f:
+            self.text = f.read()
+
+    def test_covers_all_three_hosts(self):
+        for host in ("Claude Code", "OpenCode", "Antigravity"):
+            self.assertIn(host, self.text)
+
+    def test_covers_the_approval_gate_step(self):
+        """PLAN.md 6.3: 'el test del modelo de enforcement completo' —
+        forcing a commit without approval and confirming the host's own
+        control fires when the agent tries to run cg approve."""
+        self.assertIn("APPROVAL_REQUIRED", self.text)
+        self.assertIn("cg approve", self.text)
+
+    def test_has_a_recordable_checklist(self):
+        self.assertIn("- [ ]", self.text)
+
+    def test_allows_antigravity_to_remain_pending(self):
+        self.assertIn("pending", self.text.lower())
+
+
 class TestInstallSh(unittest.TestCase):
     def setUp(self):
         self.assertTrue(os.path.exists(INSTALL_SH), "adapters/install.sh is missing")
