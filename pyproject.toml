@@ -3,13 +3,19 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "context-guard"
-version = "2.0.0"
+name = "context-guard-cli"
+version = "2.1.0"
 description = "The transactional memory layer for AI coding agents — your context survives crashes, compaction, and session loss"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = ["mcp>=1.0.0,<2.0.0"]
+
+[project.optional-dependencies]
+# Build backend and frontend, needed only by tests/test_packaging.py, which
+# builds real artifacts to prove the packaged data is actually inside them.
+# Not a runtime dependency: the suite skips those tests when they are absent.
+dev = ["build>=1.0", "hatchling"]
 
 [project.scripts]
 context-guard = "context_guard.guard.cli:main"

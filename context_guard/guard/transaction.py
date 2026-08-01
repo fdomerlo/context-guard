@@ -5,9 +5,10 @@ Follows the 3-state pipeline model: PLAN -> EXECUTE -> VERIFY -> ARCHIVE.
 """
 
 from datetime import datetime
+import getpass
 import os
 
-from .paths import get_paths
+from .paths import get_paths, missing_session_result
 from .manifest import load_manifest, save_manifest, create_initial_manifest
 from .locking import with_write_lock
 from .errors import (
@@ -98,29 +99,29 @@ def cmd_approve(context, by=None, hotfix=False, reason=None, change=None):
             EXIT_VALIDATION,
         )
 
-    # Required, not defaulted to $USER: falling back to the environment made
-    # an agent-run `cg approve` indistinguishable from a human-run one
-    # whenever the shell happened to report a plausible name. This does not
-    # authenticate anyone — an agent can still pass any string — but it
-    # forces an active choice instead of silently inheriting one, so the
-    # omission is visible in the manifest rather than papered over.
-    who = (by or "").strip()
-    if not who:
-        return CommandResult(
-            "FAIL|BY_REQUIRED|pass --by <who>",
-            EXIT_VALIDATION,
-        )
+    # Defaults to the OS user (PLAN-2.1 F2.1), reversing 2.0's decision to
+    # require it. 2.0 argued that inheriting the environment made an
+    # agent-run approve indistinguishable from a human-run one — but that
+    # was only ever half true, since an agent could pass any string it liked.
+    # The flag never authenticated anyone; it only forced an active choice.
+    #
+    # What it did cost is friction on the one step that must not be
+    # automated, and friction there is precisely what pushes people into
+    # letting the agent run it. This value is audit metadata — who to ask
+    # about this approval later — not proof of who ran the command. The
+    # authentication was, and remains, the harness permission prompt.
+    who = (by or "").strip() or getpass.getuser()
 
     # Checked before taking the write lock: acquiring it would create the
     # change directory as a side effect, inventing the change the caller
     # mistyped.
     if load_manifest(context, change) is None:
-        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+        return missing_session_result(context, change)
 
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
 
         lock_phase = m.get("lock_phase", "PLAN")
         if lock_phase != "PLAN":
@@ -184,6 +185,14 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL, change=None):
     if phase not in VALID_PHASES:
         return CommandResult(f"FAIL|INVALID_PHASE|{phase}", EXIT_VALIDATION)
 
+    # A named change that does not exist is a typo, and it is checked here
+    # rather than inside _do because taking the write lock creates the change
+    # directory as a side effect — begin would answer a misspelled name by
+    # bringing that change into being. Only an explicitly named one: with no
+    # --change, creating the manifest below is the documented bootstrap.
+    if change and load_manifest(context, change) is None:
+        return missing_session_result(context, change)
+
     def _do():
         p = get_paths(context, change)
         m = load_manifest(context, change)
@@ -239,7 +248,7 @@ def cmd_commit(context, next_phase, change=None):
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
 
         txn = m.get("transaction", {})
         if txn.get("txn_status", "idle") != "in_progress":
@@ -346,7 +355,7 @@ def cmd_rollback(context, change=None):
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
 
         txn = m.get("transaction", {})
         if txn.get("txn_status", "idle") != "in_progress":
@@ -384,7 +393,7 @@ def cmd_checkpoint(context, summary, change=None):
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
 
         session_sec = m.setdefault("session", {})
         session_sec["session_summary"] = summary

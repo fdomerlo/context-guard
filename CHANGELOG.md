@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.1.0] - 2026-08-01
+
+### Added
+
+- `cg setup` installs the host adapters for Claude Code, OpenCode and
+  Antigravity. Global scope by default — one command per machine — with
+  `--project <dir>` keeping 2.1's predecessor behaviour of installing into a
+  single project for teams that commit the configuration.
+- The phase documents and every host artifact now ship inside the package as
+  data, so nothing needs a clone of this repository to install.
+- `cg setup --no-hooks` declines Antigravity's `PreToolUse` deny hook, which
+  is installed by default. That hook is what stops the agent from running
+  `cg approve` itself, so the file it writes is annotated in the summary with
+  what it is and how to skip it.
+
+### Changed
+
+- `--context` defaults to the working directory on every subcommand, and
+  `--by` defaults to the OS user, so with a single active change the whole
+  human approval is `cg approve` with no flags at all.
+- **`--by` is no longer required.** 2.0 required it, arguing that inheriting
+  the environment made an agent-run approve indistinguishable from a
+  human-run one. The flag never authenticated anyone — an agent can pass any
+  string — and requiring it put friction on the one step that must not be
+  automated. It is audit metadata: who to ask about an approval later. The
+  authentication was and remains the harness permission prompt, which the
+  Threat Model now says explicitly.
+- Naming a change that does not exist reports
+  `FAIL|CHANGE_NOT_FOUND|<name>|available: <list>` instead of
+  `FAIL|NO_SESSION`, which read as a broken project rather than a typo. A
+  mistyped name also no longer creates the change it names: `begin` used to
+  answer a misspelling by bringing that change into being.
+- `cg new` materialises `.context-guard/phases/*.md` into the project from the
+  packaged copy, which is what makes a globally installed slash command work
+  in a project nobody prepared. A phase file that already exists is never
+  overwritten; `cg doctor` reports the difference as INFO.
+
+### Fixed
+
+- `cg setup --host antigravity` no longer crashes on an existing
+  `hooks.json` whose shape it did not expect (`{"hooks": [...]}` raised
+  `AttributeError` with a raw traceback). The shape is validated before the
+  merge; anything unrecognised or unparseable is reported and left byte-for-
+  byte untouched, and a host that cannot be configured no longer aborts the
+  others in the same run.
+
+### Removed
+
+- `adapters/install.sh`, with no compatibility wrapper. Run `cg setup`
+  instead.
+- `--with-antigravity-hook`. The deny hook is installed by
+  `cg setup --host antigravity`, since at global scope it was the only thing
+  that flag's host had to install.
+
+### Known gaps
+
+Deliberately out of scope for 2.1, recorded here so the decisions outlive the
+plan that made them:
+
+- No `get.sh` curl-pipe bootstrap; installation is `pip install` plus
+  `cg setup`.
+- No `cg setup --uninstall`. The exact list of files each run touches is
+  printed for that reason — it is the only record of what to remove by hand.
+- The tutorial exists in Spanish only; no English mirror yet.
+- `cg setup` and the three host adapters are still unverified against a real
+  host session. `docs/adapters/VERIFY.md` is the manual checklist.
+
 ## [2.0.0] - 2026-07-31
 
 ### The state-guard merge

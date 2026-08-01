@@ -5,7 +5,12 @@ import re
 import socket
 import time
 
-from .errors import AmbiguousChangeError, LegacyLayoutError
+from .errors import (
+    AmbiguousChangeError,
+    CommandResult,
+    EXIT_GENERIC,
+    LegacyLayoutError,
+)
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -131,6 +136,28 @@ def resolve_change(context, change=None):
         "FAIL|AMBIGUOUS_CHANGE|" + ",".join(names) +
         "|pass --change to say which one"
     )
+
+
+def missing_session_result(context, change=None):
+    """What to report when a command finds no manifest to operate on.
+
+    Two different failures used to share one message. A caller who named a
+    change and mistyped it got FAIL|NO_SESSION, which reads as "this project
+    has no session" and sends them looking for a broken project instead of at
+    the name they just typed. That lands hardest at the approval gate, the one
+    place a human types a change name by hand.
+
+    Deliberately not raised from resolve_change: `cg new` resolves a name that
+    does not exist yet, by definition.
+    """
+    if change:
+        available = list_changes(context)
+        listed = ", ".join(available) if available else "(none)"
+        return CommandResult(
+            f"FAIL|CHANGE_NOT_FOUND|{change}|available: {listed}",
+            EXIT_GENERIC,
+        )
+    return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
 
 
 def get_paths(context, change=None):

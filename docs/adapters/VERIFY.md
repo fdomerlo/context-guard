@@ -17,7 +17,7 @@ that has to work first for 4-5 to mean anything.
 
 ```bash
 cd /path/to/toy-project
-/path/to/context-guard/adapters/install.sh . --host <claude|opencode|antigravity>
+cg setup --host <claude|opencode|antigravity>
 ```
 
 Confirm the files land where the tests say they should:

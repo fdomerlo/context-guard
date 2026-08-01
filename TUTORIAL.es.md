@@ -18,7 +18,7 @@ Tres cosas concretas que obtenés:
 2. **Orden.** El trabajo pasa por tres fases obligatorias — planificar, ejecutar, verificar — y el asistente no puede saltearse ninguna mientras use la herramienta.
 3. **Control.** Entre el plan y el código hay un punto de aprobación que es tuyo: el asistente te presenta el plan y no puede empezar a escribir código hasta que vos lo apruebes con un comando.
 
-Una aclaración honesta, porque este proyecto se toma en serio la honestidad: context-guard ordena y protege a un asistente que *usa* la herramienta. No es una jaula — un asistente podría ignorarla. Por eso la instalación incluye un paso donde tu propia aplicación de IA (no context-guard) queda configurada para pedirte confirmación en el momento clave. Eso se explica en el paso 5.
+Una aclaración honesta, porque este proyecto se toma en serio la honestidad: context-guard ordena y protege a un asistente que *usa* la herramienta. No es una jaula — un asistente podría ignorarla. Por eso la instalación incluye un paso donde tu propia aplicación de IA (no context-guard) queda configurada para pedirte confirmación en el momento clave. Eso se explica en el paso 4.
 
 ---
 
@@ -32,67 +32,65 @@ Una aclaración honesta, porque este proyecto se toma en serio la honestidad: co
 
 ---
 
-## 3. Instalación (una sola vez por computadora)
+## 3. Instalación (dos líneas, una sola vez)
 
 Abrí la terminal y corré:
 
 ```bash
-pip install git+https://github.com/fdomerlo/context-guard.git@v2.0.0
+pip install context-guard-cli
+cg setup
 ```
 
-*(Si usás `uv`, que es más rápido: `uv tool install git+https://github.com/fdomerlo/context-guard.git@v2.0.0`.)*
+La primera línea instala la herramienta. La segunda detecta qué asistentes
+tenés instalados y los configura: les agrega dos comandos nuevos, `/cg-new` y
+`/cg-continue`, y deja lista la configuración de permisos del punto de
+aprobación (paso 4). Al terminar imprime la lista exacta de archivos que
+tocó — nada oculto. Podés correrlo las veces que quieras: si ya está
+instalado, no duplica nada.
 
-Verificá que quedó instalado:
+*(Si usás `uv`, que es más rápido: `uv tool install context-guard-cli` y
+después `cg setup`.)*
+
+Verificá que quedó todo:
 
 ```bash
 cg --help
 ```
 
-Si ves la lista de comandos, listo. `cg` es el nombre corto de la herramienta; todo lo que hagas con context-guard empieza con `cg`.
+Si ves la lista de comandos, listo. `cg` es el nombre corto de la
+herramienta; todo lo que hagas con context-guard empieza con `cg`.
 
-> **Si algo falla:** el error más común es que `pip` instaló pero la terminal no encuentra `cg`. Cerrá y reabrí la terminal. Si persiste, probá `python3 -m pip install --user git+https://github.com/fdomerlo/context-guard.git@v2.0.0` y de nuevo cerrar/reabrir.
+**Y eso es todo.** No hay un paso por proyecto: la primera vez que arranques
+un cambio en un proyecto nuevo, `cg new` escribe ahí lo que falte. No
+necesitás descargar este repositorio ni copiar archivos a mano.
 
----
-
-## 4. Conectarlo con tu asistente (una sola vez por proyecto)
-
-Este paso le enseña a tu asistente que este proyecto usa context-guard, y le instala dos comandos nuevos: `/cg-new` y `/cg-continue`.
-
-Entrá a la carpeta de tu proyecto y corré el instalador de adaptadores (viene dentro del repositorio de context-guard; cloná el repo una vez en algún lado si aún no lo hiciste):
-
-```bash
-git clone https://github.com/fdomerlo/context-guard.git ~/context-guard
-cd /ruta/a/tu/proyecto
-bash ~/context-guard/adapters/install.sh . --host all
-```
-
-El instalador detecta qué asistentes tenés y configura cada uno. Al final imprime la lista exacta de archivos que tocó — nada oculto. Lo que instala, en criollo:
-
-- Los comandos `/cg-new` y `/cg-continue` para tu asistente.
-- Las tres "guías de fase" (planificar, ejecutar, verificar) que el asistente va a seguir.
-- La configuración de permisos de tu asistente para el punto de aprobación (paso 5).
-
-Podés correrlo las veces que quieras: si ya está instalado, no duplica nada.
+> **Si algo falla:** el error más común es que `pip` instaló pero la terminal
+> no encuentra `cg`. Cerrá y reabrí la terminal. Si persiste, probá
+> `python3 -m pip install --user context-guard-cli` y de nuevo cerrar/reabrir.
 
 ---
 
-## 5. El punto de aprobación: tu único trabajo obligatorio
+## 4. El punto de aprobación: tu único trabajo obligatorio
 
 Acá está el corazón del sistema, y es importante que lo entiendas antes del primer uso.
 
 Cuando el asistente termina de planificar, intenta pasar a la fase de ejecución. context-guard se lo niega con un mensaje claro: *falta la aprobación humana*. El asistente entonces se detiene y te pide que corras vos este comando:
 
 ```bash
-cg approve --context . --change nombre-del-cambio --by tu-nombre
+cg approve
 ```
 
-Ese comando es **solo tuyo**. La configuración que instaló el paso 4 hace que, si el asistente intentara correrlo por su cuenta, tu aplicación de IA te muestre un cartel de confirmación antes de permitirlo — y ahí simplemente decís que no. El resultado práctico: **ningún código se escribe sin que vos hayas leído el plan y dado el visto bueno.** Es un semáforo con tu nombre.
+Sin flags: con un solo cambio activo, context-guard sabe cuál es, y anota tu
+usuario del sistema como responsable. Si tenés varios cambios en paralelo,
+agregá `--change nombre-del-cambio`.
+
+Ese comando es **solo tuyo**. La configuración que instaló el paso 3 hace que, si el asistente intentara correrlo por su cuenta, tu aplicación de IA te muestre un cartel de confirmación antes de permitirlo — y ahí simplemente decís que no. El resultado práctico: **ningún código se escribe sin que vos hayas leído el plan y dado el visto bueno.** Es un semáforo con tu nombre.
 
 Cuando aparezca ese cartel de confirmación en tu asistente pidiendo permiso para `cg approve`, rechazalo siempre — la aprobación la das vos desde tu terminal, no el asistente desde la suya. Y una advertencia: si el cartel ofrece un botón tipo "permitir siempre", no lo uses para este comando, porque desactiva el semáforo por el resto de la sesión.
 
 ---
 
-## 6. Tu primer cambio, paso a paso
+## 5. Tu primer cambio, paso a paso
 
 Un "cambio" (change) es una unidad de trabajo con nombre: una feature, un arreglo, una refactorización. Vamos a hacer uno completo.
 
@@ -106,12 +104,12 @@ Un "cambio" (change) es una unidad de trabajo con nombre: una feature, un arregl
 
 El asistente crea el cambio y entra automáticamente en la fase **PLAN**. Detrás de escena apareció una carpeta `.context-guard/changes/login-form/` en tu proyecto — esa es la libreta. No la edites a mano nunca; para eso están los comandos.
 
-**Paso 2 — Planificar juntos.** El asistente va a investigar tu proyecto y escribir tres cosas: el objetivo, una foto del estado actual del código, y la lista de tareas concretas. Conversá con él normalmente: pedile ajustes, agregá contexto, marcá lo que no querés. Cuando el plan te cierre, el asistente intentará avanzar... y se topará con el semáforo del paso 5.
+**Paso 2 — Planificar juntos.** El asistente va a investigar tu proyecto y escribir tres cosas: el objetivo, una foto del estado actual del código, y la lista de tareas concretas. Conversá con él normalmente: pedile ajustes, agregá contexto, marcá lo que no querés. Cuando el plan te cierre, el asistente intentará avanzar... y se topará con el semáforo del paso 4.
 
 **Paso 3 — Aprobar.** Leé el plan (está en `.context-guard/changes/login-form/`, en archivos legibles: `objective.md`, `tasks.md`). Si estás de acuerdo, en TU terminal:
 
 ```bash
-cg approve --context . --change login-form --by fernando
+cg approve
 ```
 
 Avisale al asistente que ya aprobaste, y ahora sí: pasa a **EXECUTE**.
@@ -119,14 +117,14 @@ Avisale al asistente que ya aprobaste, y ahora sí: pasa a **EXECUTE**.
 **Paso 4 — Ejecutar.** El asistente toma las tareas de la lista una por una — pide la siguiente con `cg next-task`, la hace, la marca completada. Cada tarea marcada queda escrita en disco al instante. Vos podés mirar el avance cuando quieras:
 
 ```bash
-cg status --context . --change login-form
+cg status
 ```
 
 **Paso 5 — Verificar.** Con todas las tareas completas, el asistente pasa a **VERIFY**: revisa su propio trabajo, corre los tests, y escribe dos reportes (revisión y verificación). Si algo falló, vuelve a corregir. Al terminar, el cambio se archiva con su historia completa.
 
 ---
 
-## 7. La magia: qué pasa cuando la sesión se muere
+## 6. La magia: qué pasa cuando la sesión se muere
 
 Esto es lo que viniste a buscar. Supongamos que a mitad de la fase EXECUTE se te corta la sesión — contexto lleno, se colgó la app, apagaste la máquina, lo que sea.
 
@@ -142,14 +140,14 @@ Probalo a propósito la primera vez: cerrá la sesión en medio del trabajo y re
 
 ---
 
-## 8. Preguntas que te vas a hacer
+## 7. Preguntas que te vas a hacer
 
-**"El asistente dice FAIL con un número de error, ¿qué hago?"** Los números son deliberadamente simples: **2** significa que otra sesión tiene tomado el cambio (esperá o mirá el punto siguiente); **4**, que falta completar un artefacto del plan (algo quedó como `[PENDING]`); **5**, que intentó una fase fuera de orden (la herramienta lo frenó — está funcionando); **6**, que falta tu aprobación (paso 5). El asistente sabe interpretarlos solo; esto es para que vos también entiendas qué pasa.
+**"El asistente dice FAIL con un número de error, ¿qué hago?"** Los números son deliberadamente simples: **2** significa que otra sesión tiene tomado el cambio (esperá o mirá el punto siguiente); **4**, que falta completar un artefacto del plan (algo quedó como `[PENDING]`); **5**, que intentó una fase fuera de orden (la herramienta lo frenó — está funcionando); **6**, que falta tu aprobación (paso 4). El asistente sabe interpretarlos solo; esto es para que vos también entiendas qué pasa.
 
 **"Quedó todo trabado y nadie está trabajando."** Pasa si una sesión murió de forma fea. Corré el médico:
 
 ```bash
-cg doctor --context . --fix
+cg doctor --fix
 ```
 
 Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas un traba editando los archivos de `.context-guard/` a mano.
@@ -164,17 +162,17 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 
 ---
 
-## 9. Chuleta de referencia
+## 8. Chuleta de referencia
 
 | Momento | Vos hacés | El asistente hace |
 |---|---|---|
 | Empezar algo nuevo | `/cg-new nombre` | Crea el cambio, entra a PLAN |
 | Revisar el plan | Leés `objective.md` y `tasks.md` | Espera tu aprobación |
-| Aprobar | `cg approve --context . --change nombre --by vos` | Pasa a EXECUTE |
-| Ver el avance | `cg status --context . --change nombre` | — |
+| Aprobar | `cg approve` | Pasa a EXECUTE |
+| Ver el avance | `cg status` | — |
 | Retomar tras un corte | `/cg-continue` | Continúa donde quedó |
-| Destrabar | `cg doctor --context . --fix` | — |
+| Destrabar | `cg doctor --fix` | — |
 
-Instalación (una vez): `pip install git+https://github.com/fdomerlo/context-guard.git@v2.0.0` y luego `bash ~/context-guard/adapters/install.sh . --host all` dentro de tu proyecto.
+Instalación (una vez): `pip install context-guard-cli` y luego `cg setup` una vez por máquina.
 
 Documentación completa, en inglés y español, en el [repositorio](https://github.com/fdomerlo/context-guard).

@@ -10,6 +10,7 @@ from datetime import datetime
 
 from .paths import (
     get_paths,
+    missing_session_result,
     generate_agent_id,
     get_archive_dir,
     get_changes_dir,
@@ -28,6 +29,13 @@ from .transaction import (
     cmd_checkpoint,
 )
 from .migrate import cmd_migrate
+from .setup import (
+    antigravity_detected,
+    diverged_phases,
+    materialise_antigravity_rule,
+    materialise_phases,
+    run_setup,
+)
 from .errors import (
     CommandResult,
     EXIT_OK,
@@ -87,7 +95,13 @@ def _pid_is_alive(pid):
 # Changes
 # ---------------------------------------------------------------------------
 
-def cmd_new(context, change):
+def cmd_setup(host="all", with_mcp=False, project=None, no_hooks=False):
+    """Install the host adapters. See guard/setup.py for the scope rules."""
+    return run_setup(host=host, with_mcp=with_mcp, project=project,
+                     no_hooks=no_hooks)
+
+
+def cmd_new(context, change, host=None):
     """Crea un change nuevo y deja la fase PLAN iniciada.
 
     Beginning PLAN here rather than leaving it to a separate call is
@@ -116,6 +130,13 @@ def cmd_new(context, change):
     begin = cmd_begin(context, "PLAN", change=name)
     if begin.exit_code != EXIT_OK:
         return begin
+
+    # The installed slash commands point at .context-guard/phases/*.md, so a
+    # project only becomes operable once those exist. Writing them here is
+    # what lets a global `cg setup` work in a project nobody prepared.
+    materialise_phases(context)
+    if host == "antigravity" or (host is None and antigravity_detected()):
+        materialise_antigravity_rule(context)
 
     return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}|phase=PLAN", EXIT_OK)
 
@@ -229,7 +250,7 @@ def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
         tasks = m.setdefault("task_claims", {})
         existing = tasks.get(task_id)
 
@@ -273,7 +294,7 @@ def cmd_release_task(context, task_id, agent_id=None, force=False, change=None):
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
         tasks = m.get("task_claims", {})
         task = tasks.get(task_id)
         # Checked before identity: you cannot violate the ownership of a claim
@@ -471,7 +492,7 @@ def cmd_next_task(context, agent_id=None, change=None):
     p = get_paths(context, change)
     m = load_manifest(context, change)
     if not m:
-        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+        return missing_session_result(context, change)
 
     # Buscar en tasks.md
     all_tasks = []
@@ -511,7 +532,7 @@ def cmd_status(context, change=None):
     lines = []
 
     if not m:
-        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+        return missing_session_result(context, change)
 
     lines.append(f"CONTEXT: {m.get('context_name', context)}")
 
@@ -628,6 +649,16 @@ def cmd_doctor(context, fix=False, change=None):
         findings.append("ERROR: No task file found (need tasks.md)")
 
     # 3. Check for non-ASCII in artifacts (removed from doctor, moved to validate)
+
+    # 3b. Phase documents that differ from the embedded copy. Reported as
+    # INFO, never as a problem: `cg new` deliberately refuses to overwrite a
+    # customised phase file, so a project that tailored one would otherwise
+    # look permanently broken. Informational findings must not move the exit
+    # code — that is what makes them informational.
+    for fname in diverged_phases(context):
+        findings.append(
+            f"INFO: .context-guard/phases/{fname} differs from the packaged "
+            f"copy (customised locally; it is never overwritten)")
 
     # 4. Check stale task claims
     claims = m.get("task_claims", {})

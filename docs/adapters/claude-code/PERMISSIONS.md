@@ -34,7 +34,7 @@ Merge this into `.claude/settings.json` in the project (or into
 }
 ```
 
-`adapters/install.sh` merges it for you, preserving any entries already there.
+`cg setup` merges it for you, preserving any entries already there.
 Both spellings are listed because the package installs two entrypoints; an
 allowlist that only names the short one is trivially sidestepped by using the
 long one. The `deny` entry closes the other vector: an agent that cannot run

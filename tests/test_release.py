@@ -23,15 +23,16 @@ SPANISH_INDICATORS = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
 
 
 class TestPyprojectVersion(unittest.TestCase):
-    def test_version_is_2_0_0(self):
+    def test_version_is_2_1_0(self):
+        """A minor bump: `cg setup` and packaged data are additive, and the
+        one removal (the shell installer) is a tool the package never
+        exported as API. PLAN-2.1 F3 fixes the number here so the release tag
+        and the CHANGELOG cannot drift from what actually ships."""
         with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
             text = f.read()
         match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "version not declared")
-        self.assertEqual(
-            match.group(1), "2.0.0",
-            "PLAN.md 0.1: the major bump communicates the state-guard merge",
-        )
+        self.assertEqual(match.group(1), "2.1.0")
 
     def test_description_is_the_one_sentence_pitch(self):
         """PLAN.md 0.7's pitch doubles as the PyPI project description — the
@@ -94,6 +95,54 @@ class TestChangelogEntry(unittest.TestCase):
         not just the 2.0.0 section checked above."""
         spanish_count = sum(self.text.lower().count(c) for c in SPANISH_INDICATORS)
         self.assertLessEqual(spanish_count, 3, "CHANGELOG.md must be entirely in English (PLAN.md F8 8.1.3)")
+
+
+class TestTwoPointOneEntry(unittest.TestCase):
+    """PLAN-2.1 F3 point 2 dictates the entry's content, because a CHANGELOG
+    that omits a removal is how a user discovers it from a traceback."""
+
+    def setUp(self):
+        with open(CHANGELOG_PATH, "r", encoding="utf-8") as f:
+            self.text = f.read()
+        match = re.search(
+            r"^## \[2\.1\.0\].*?(?=^## \[|\Z)",
+            self.text, re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(match, "CHANGELOG.md has no [2.1.0] entry")
+        self.section = match.group(0)
+
+    def test_the_entry_is_dated(self):
+        self.assertRegex(self.section, r"^## \[2\.1\.0\] - \d{4}-\d{2}-\d{2}")
+
+    def test_nothing_is_left_under_unreleased(self):
+        """The 2.1.0 work sat under Unreleased while the cycle ran. Shipping
+        with both headings present leaves a reader unsure which one describes
+        the version they installed."""
+        match = re.search(
+            r"^## \[Unreleased\](.*?)(?=^## \[|\Z)",
+            self.text, re.MULTILINE | re.DOTALL,
+        )
+        if match:
+            self.assertEqual(
+                match.group(1).strip(), "",
+                "the Unreleased section still carries entries that shipped in 2.1.0",
+            )
+
+    def test_it_announces_cg_setup_and_the_packaged_data(self):
+        self.assertIn("cg setup", self.section)
+        self.assertIn("package", self.section.lower())
+
+    def test_it_records_the_removal_with_a_migration_line(self):
+        """F3 point 2 asks for the migration line by name. "Removed X" without
+        "do Y instead" is a dead end for whoever hits it."""
+        self.assertIn("Removed", self.section)
+        self.assertRegex(self.section, r"install\.sh")
+        # Whitespace-tolerant: the phrase wraps across lines in the file,
+        # and where the line break falls is not the requirement.
+        self.assertRegex(self.section, r"[Rr]un\s+`cg setup`\s+instead")
+
+    def test_it_records_that_cg_new_scaffolds_the_phases(self):
+        self.assertIn("cg new", self.section)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 # Context Guard
 
 [![CI](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/context-guard-cli)](https://pypi.org/project/context-guard-cli/)
 
 **La capa de memoria transaccional para agentes de codificación con IA — tu contexto sobrevive a crashes, compactación y pérdida de sesión.**
 
@@ -32,7 +33,7 @@ avanzar a ejecución, reclamar una tarea, y chequear el estado.
 
 ```bash
 # (1) inicia un change — esto arranca PLAN y scaffoldea los artefactos
-cg new redis-cache --context .
+cg new redis-cache
 
 # completa el plan — lo escribe un agente, no vos
 cat > .context-guard/changes/redis-cache/objective.md <<'EOF'
@@ -45,16 +46,16 @@ cat > .context-guard/changes/redis-cache/tasks.md <<'EOF'
 EOF
 
 # (2) un humano revisa objective.md y tasks.md, y aprueba
-cg approve --context . --change redis-cache --by alice
+cg approve
 
 # (3) la aprobación registrada desbloquea EXECUTE
-cg commit --context . --change redis-cache --next-phase EXECUTE
+cg commit --next-phase EXECUTE
 
 # (4) reclama la próxima tarea de forma atómica — seguro con varios agentes a la vez
-cg next-task --context . --change redis-cache
+cg next-task
 
 # (5) rehidratación en un solo paso tras un crash, una compactación, o una sesión nueva
-cg status --context . --change redis-cache
+cg status
 ```
 
 Cada línea de arriba corre tal cual está escrita contra un directorio nuevo;
@@ -62,38 +63,33 @@ nada acá es un resumen ilustrativo.
 
 ## Instalación
 
-**Zero-install, vía `uvx`** — agregá esto a la config de tu cliente MCP
-(Claude Desktop, Antigravity, Cursor: `claude_desktop_config.json` /
-`mcp-settings.json`; OpenCode: `~/.config/opencode/opencode.jsonc`):
-
-```jsonc
-{
-  "mcpServers": {
-    "context-guard": {
-      "command": "uvx",
-      "args": ["git+https://github.com/fdomerlo/context-guard.git"]
-    }
-  }
-}
-```
-
-**Solo CLI**, para el binario `cg` sin cliente MCP:
+Dos líneas, una vez por máquina:
 
 ```bash
-uv pip install git+https://github.com/fdomerlo/context-guard.git
+pip install context-guard-cli
+cg setup
 ```
 
-**Local, editable**, para desarrollo:
+`cg setup` detecta Claude Code, OpenCode y Antigravity, instala los slash
+commands, y deja `cg approve` detrás del permission prompt de cada uno — ver
+[Adapters](#adapters-y-configuración-de-permisos). Imprime cada archivo que
+tocó, y correrlo de nuevo no cambia nada.
+
+Por proyecto no hay paso de instalación: `cg new` escribe las fases en
+`.context-guard/phases/` la primera vez que arrancás un change.
+
+**Opcional — el servidor MCP**, para hosts sin shell (Claude Desktop es el
+caso para el que existe): `cg setup --with-mcp` lo registra. Todos los
+adapters funcionan completos sin él; MCP es transporte alternativo, no
+requisito.
+
+**Para contribuir** (el resto está en [desarrollo](#desarrollo)):
 
 ```bash
 git clone https://github.com/fdomerlo/context-guard.git
-cd context-guard && uv venv && uv pip install -e .
+cd context-guard && uv venv && uv pip install -e ".[dev]"
 git config core.hooksPath .githooks   # activa el gate de pre-commit de más abajo
 ```
-
-Para instalar las fases y los slash commands de tu harness, corré
-`adapters/install.sh [directorio-del-proyecto-destino]` — ver
-[Adapters](#adapters-y-configuración-de-permisos) más abajo.
 
 ## Cómo funciona
 
@@ -141,11 +137,15 @@ Un agente con shell puede escribir directamente a `manifest.json`, o
 simplemente no usar la herramienta, y nada en el proceso lo detiene.
 
 El único comando explícitamente **humano** es `cg approve`. Registra el
-visto bueno que `commit --next-phase EXECUTE` exige — pero el comando en sí
+visto bueno que `commit --next-phase EXECUTE` exige. El nombre que anota
+(`--by`, que por defecto toma el usuario del sistema) es **metadata de
+auditoría, no autenticación**: dice a quién preguntarle por esa aprobación
+más adelante, y un agente podría pasar cualquier string. El comando en sí
 es tan cooperativo como el resto: un agente con shell puede correr
 `cg approve` él mismo, y nada en `cg` lo impide. El control duro real no
 vive en `cg` en absoluto — vive en el permission prompt de tu harness sobre
-el comando `cg approve`, configurado por host en `adapters/*/PERMISSIONS.md`.
+el comando `cg approve`, configurado por host en
+`docs/adapters/*/PERMISSIONS.md`.
 Ese prompt corre afuera del proceso del agente, que es el único lugar donde
 puede vivir un control que no depende de la cooperación del agente.
 `approve` deliberadamente no está expuesto como tool de MCP, por la misma
@@ -165,7 +165,7 @@ garantía de corrección, y viene con un bypass auditado
 | `cg new <nombre> --context <ruta>` | Crea un change y arranca PLAN |
 | `cg list --context <ruta>` | Lista los changes activos y su fase |
 | `cg begin --phase <FASE> --context <ruta>` | Inicia una transacción para la fase dada |
-| `cg approve --context <ruta> --by <quién> [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
+| `cg approve [--by <quién>] [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
 | `cg commit --next-phase <FASE> --context <ruta>` | Valida los artefactos de la fase actual y avanza el DAG |
 | `cg rollback --context <ruta>` | Restaura el snapshot del manifest tomado en `begin` |
 | `cg checkpoint --summary "<texto>" --context <ruta>` | Persiste un resumen de sesión para retomar en caliente |
@@ -238,11 +238,14 @@ fase completada o una transacción abierta). Activalo una vez por clon con
 
 ## Adapters y configuración de permisos
 
-En `adapters/{claude-code,opencode,antigravity}/` viven wrappers finos por
-harness — cada uno apunta a `phases/{plan,execute,verify}.md` en vez de
-duplicarlos, y trae un `PERMISSIONS.md` que documenta exactamente cómo poner
-`cg approve` detrás del permission prompt de ese harness.
-`adapters/install.sh` instala el que corresponde al host detectado. Los
+Dentro del paquete, en `context_guard/_data/hosts/{claude-code,opencode,
+antigravity}/`, viven wrappers finos por harness — cada uno apunta a
+`phases/{plan,execute,verify}.md` en vez de duplicarlos. Cómo poner
+`cg approve` detrás del permission prompt de cada harness está documentado en
+[docs/adapters/](docs/adapters/), un `PERMISSIONS.md` por host, junto con el
+checklist de smoke-test manual en
+[docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
+`cg setup` instala el que corresponde a cada host detectado. Los
 adapters de OpenCode y Antigravity están portados de state-guard y cubiertos
 solo por tests estáticos — no se corrieron contra un host real de ninguno de
 los dos.

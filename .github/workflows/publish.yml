@@ -1,0 +1,60 @@
+name: Publish
+
+# Publishing is driven by a GitHub release, not by a push: creating the
+# release is the human act that authorises a version going out, and it is the
+# only step of this pipeline a person performs.
+on:
+  release:
+    types: [published]
+
+jobs:
+  # A separate job, not a step, so `needs:` below is a real gate. A test step
+  # sitting above an upload step in the same job can be skipped, reordered or
+  # made non-fatal by a later edit without anything failing loudly.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package
+        # The dev extra carries `build`; without it the packaging tests skip,
+        # and the check that proves the wheel actually contains its data
+        # would silently not run on the very wheel being published.
+        run: pip install ".[dev]"
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    # Trusted Publishing: PyPI hands out a short-lived credential to this
+    # workflow, in this repository, in this environment, and to nothing else.
+    # The alternative — an API token in a secret — is a long-lived credential
+    # that publishes from anywhere it leaks to. Binding the capability to the
+    # place the check runs is the same principle as putting `cg approve`
+    # behind the harness permission prompt rather than trusting the agent.
+    #
+    # `environment` must match the pending publisher registered on PyPI
+    # (owner fdomerlo, repository context-guard, workflow publish.yml,
+    # environment pypi). A mismatch fails as an opaque OIDC error.
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel and sdist
+        run: |
+          pip install build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

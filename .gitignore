@@ -4,4 +4,7 @@ __pycache__/
 *.tmp
 *.zip
 .venv/
+dist/
 PLAN.md
+PLAN-2.1.md
+RUNBOOK_HUMANO.md
