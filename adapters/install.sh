@@ -23,11 +23,16 @@ usage() {
     echo "                 hosts being installed. Optional: every adapter works"
     echo "                 completely without it — MCP is an alternative"
     echo "                 transport, not a requirement."
+    echo "  --with-antigravity-hook"
+    echo "                 Merge the PreToolUse deny hook for 'cg approve' into"
+    echo "                 ~/.gemini/config/hooks.json. Optional hardening; touches"
+    echo "                 user config, not the project, so it is opt-in."
 }
 
 TARGET_ARG="."
 HOST="all"
 WITH_MCP=0
+WITH_ANTIGRAVITY_HOOK=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -49,6 +54,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --with-mcp)
             WITH_MCP=1
+            shift
+            ;;
+        --with-antigravity-hook)
+            WITH_ANTIGRAVITY_HOOK=1
             shift
             ;;
         -*)
@@ -253,6 +262,40 @@ if [[ "$install_antigravity" == "1" ]]; then
     cp "$SCRIPT_DIR/antigravity/rules/context-guard.md" "$TARGET_DIR/.agents/rules/context-guard.md"
     echo "  -> Antigravity: rule installed at .agents/rules/context-guard.md"
     echo "     (permission setup, unverified against a real host: adapters/antigravity/PERMISSIONS.md)"
+
+    if [[ "$WITH_ANTIGRAVITY_HOOK" == "1" ]]; then
+        ANTIGRAVITY_HOOKS_CFG="$HOME/.gemini/config/hooks.json"
+        mkdir -p "$(dirname "$ANTIGRAVITY_HOOKS_CFG")"
+        python3 - "$ANTIGRAVITY_HOOKS_CFG" "$SCRIPT_DIR/antigravity/hooks.snippet.json" <<'PY'
+import json
+import sys
+
+config_path, snippet_path = sys.argv[1], sys.argv[2]
+with open(snippet_path, "r", encoding="utf-8") as f:
+    snippet = json.load(f)
+new_hook = snippet["hooks"]["PreToolUse"][0]
+
+try:
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    cfg = {}
+
+pre_tool_use = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
+already_present = any(
+    h.get("matcher", {}).get("tool") == new_hook["matcher"]["tool"]
+    and h.get("matcher", {}).get("commandPattern") == new_hook["matcher"]["commandPattern"]
+    for h in pre_tool_use
+)
+if not already_present:
+    pre_tool_use.append(new_hook)
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PY
+        echo "  -> Antigravity: deny hook merged into ~/.gemini/config/hooks.json"
+    fi
 elif [[ "$HOST" == "all" ]]; then
     echo "  -> Antigravity: not detected, skipped (pass FORCE_ANTIGRAVITY=1 or --host antigravity to install anyway)"
 else

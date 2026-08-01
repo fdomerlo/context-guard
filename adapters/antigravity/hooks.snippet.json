@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": {
+          "tool": "run_command",
+          "commandPattern": "^\\s*(cg|context-guard)\\s+approve\\b"
+        },
+        "action": {
+          "decision": "deny",
+          "message": "human-only command — ask the user to run it"
+        }
+      }
+    ]
+  }
+}

@@ -29,6 +29,18 @@ If you enable auto-run for convenience, understand what you are turning off:
 the pipeline becomes fully cooperative, and the manifest's `approval_history`
 becomes a record of what the agent did rather than of what you authorized.
 
+## Optional hardening: the deny hook
+
+`hooks.snippet.json` declares a `PreToolUse` hook that matches `run_command`
+against `cg approve`/`context-guard approve` and returns `"decision": "deny"`
+with the message "human-only command — ask the user to run it" — the
+equivalent, and stronger, of Claude Code's ask list, since it does not
+depend on auto-run being off in the first place.
+
+It is opt-in: `adapters/install.sh --host antigravity --with-antigravity-hook`
+merges it into the shared `~/.gemini/config/hooks.json`, which is why it is
+not installed by default — it touches user config, not the project's.
+
 ## MCP registration
 
 `install.sh` does not automate this for Antigravity — the CLI's MCP config

@@ -228,6 +228,49 @@ class TestAntigravityAdapterIsPerProject(unittest.TestCase):
         )
 
 
+class TestAntigravityHookSnippet(unittest.TestCase):
+    """F6 6.0.5: Antigravity's CLI never got the deny hook on run_command —
+    the equivalent, and stronger, of Claude Code's ask list. Optional
+    hardening (PLAN.md 6.1) since it touches user config, not project."""
+
+    PATH = os.path.join(ADAPTERS_DIR, "antigravity", "hooks.snippet.json")
+
+    def _snippet(self):
+        with open(self.PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_snippet_exists_and_is_valid_json(self):
+        self.assertTrue(os.path.exists(self.PATH), "adapters/antigravity/hooks.snippet.json is missing")
+        self._snippet()
+
+    def test_declares_a_pre_tool_use_hook_on_run_command(self):
+        data = self._snippet()
+        pre_tool_use = data.get("hooks", {}).get("PreToolUse", [])
+        self.assertTrue(pre_tool_use, "no PreToolUse hooks declared")
+        self.assertEqual(pre_tool_use[0]["matcher"]["tool"], "run_command")
+
+    def test_matcher_pattern_catches_both_entrypoint_spellings(self):
+        data = self._snippet()
+        pattern = data["hooks"]["PreToolUse"][0]["matcher"]["commandPattern"]
+        regex = re.compile(pattern)
+        self.assertTrue(regex.match("cg approve --change demo"))
+        self.assertTrue(regex.match("context-guard approve --change demo"))
+        self.assertFalse(regex.match("cg approved-something-else"))
+
+    def test_action_denies_with_a_human_readable_message(self):
+        data = self._snippet()
+        action = data["hooks"]["PreToolUse"][0]["action"]
+        self.assertEqual(action["decision"], "deny")
+        self.assertIn("human-only", action["message"])
+
+    def test_permissions_doc_mentions_the_opt_in_hook(self):
+        path = os.path.join(ADAPTERS_DIR, "antigravity", "PERMISSIONS.md")
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("hooks.snippet.json", text)
+        self.assertIn("--with-antigravity-hook", text)
+
+
 class TestMcpRegistrationSnippets(unittest.TestCase):
     """F6 6.0.8: nobody registered the MCP server. It is a channel separate
     from the adapters (not a skill, not a command) and needs explicit
@@ -618,6 +661,57 @@ class TestWithMcpFlag(InstallShRunCase):
             cfg = json.load(f)
         self.assertIn("other-tool", cfg["mcpServers"])
         self.assertIn("context-guard", cfg["mcpServers"])
+
+
+class TestWithAntigravityHookFlag(InstallShRunCase):
+    def hooks_path(self):
+        return os.path.join(self.home, ".gemini", "config", "hooks.json")
+
+    def test_hooks_json_is_not_created_without_the_flag(self):
+        res = self.run_install("--host", "antigravity")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertFalse(os.path.exists(self.hooks_path()))
+
+    def test_with_antigravity_hook_merges_the_deny_hook(self):
+        res = self.run_install("--host", "antigravity", "--with-antigravity-hook")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        self.assertTrue(os.path.exists(self.hooks_path()), "~/.gemini/config/hooks.json was not written")
+        with open(self.hooks_path(), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        pre_tool_use = cfg["hooks"]["PreToolUse"]
+        self.assertTrue(
+            any(h["matcher"]["tool"] == "run_command" for h in pre_tool_use),
+        )
+
+    def test_running_twice_does_not_duplicate_the_hook_entry(self):
+        self.run_install("--host", "antigravity", "--with-antigravity-hook")
+        res = self.run_install("--host", "antigravity", "--with-antigravity-hook")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        with open(self.hooks_path(), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        matching = [
+            h for h in cfg["hooks"]["PreToolUse"]
+            if h.get("matcher", {}).get("tool") == "run_command"
+            and "approve" in h.get("matcher", {}).get("commandPattern", "")
+        ]
+        self.assertEqual(len(matching), 1, "the hook entry must not be duplicated across runs")
+
+    def test_a_preexisting_unrelated_hook_survives(self):
+        os.makedirs(os.path.dirname(self.hooks_path()), exist_ok=True)
+        with open(self.hooks_path(), "w", encoding="utf-8") as f:
+            json.dump({
+                "hooks": {"PreToolUse": [{"matcher": {"tool": "write_file"}, "action": {"decision": "allow"}}]},
+            }, f)
+
+        self.run_install("--host", "antigravity", "--with-antigravity-hook")
+
+        with open(self.hooks_path(), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        tools = [h["matcher"]["tool"] for h in cfg["hooks"]["PreToolUse"]]
+        self.assertIn("write_file", tools)
+        self.assertIn("run_command", tools)
 
 
 class TestInstallSh(unittest.TestCase):
