@@ -39,6 +39,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   in a project nobody prepared. A phase file that already exists is never
   overwritten; `cg doctor` reports the difference as INFO.
 
+### Fixed
+
+- `cg setup --host antigravity` no longer crashes on an existing
+  `hooks.json` whose shape it did not expect (`{"hooks": [...]}` raised
+  `AttributeError` with a raw traceback). The shape is validated before the
+  merge; anything unrecognised or unparseable is reported and left byte-for-
+  byte untouched, and a host that cannot be configured no longer aborts the
+  others in the same run.
+
 ### Removed
 
 - `adapters/install.sh`, with no compatibility wrapper. Run `cg setup`

@@ -214,6 +214,35 @@ def _install_opencode(root, with_mcp, global_scope):
     return touched
 
 
+HOOKS_MANUAL_FIX = ("left untouched; add the deny hook manually "
+                    "(see docs/adapters/antigravity/PERMISSIONS.md)")
+
+
+def _hooks_shape_problem(cfg):
+    """Why this config cannot be merged into, or None if it can.
+
+    The merge used to assume the shape and reach straight for
+    `.setdefault("hooks", {}).setdefault("PreToolUse", [])`. Against a
+    `{"hooks": [...]}` it raised AttributeError and printed a traceback at a
+    user holding a perfectly ordinary file we simply did not expect.
+
+    Absent keys are fine: `{}` is what a fresh config looks like, and a check
+    strict enough to reject it would break the common case for the rare one.
+    Only a key present with the wrong type is a problem.
+    """
+    if not isinstance(cfg, dict):
+        return "the root of the file is not a JSON object"
+    hooks = cfg.get("hooks")
+    if hooks is None:
+        return None
+    if not isinstance(hooks, dict):
+        return '"hooks" is not a JSON object'
+    pre_tool_use = hooks.get("PreToolUse")
+    if pre_tool_use is not None and not isinstance(pre_tool_use, list):
+        return '"hooks.PreToolUse" is not a list'
+    return None
+
+
 def _install_antigravity(root, global_scope):
     """Global scope installs the deny hook; project scope installs the rule.
 
@@ -221,31 +250,50 @@ def _install_antigravity(root, global_scope):
     config by definition, so it has no meaning in a project install; the
     workspace rule travels with the repository, and for the global case
     `cg new` materialises it per project instead.
+
+    Returns `(touched, failure)`. Unlike the other hosts this one merges into
+    a file it did not create and cannot fully predict, so it needs a way to
+    decline without taking the whole run down with it.
     """
     if not global_scope:
         for relpath, text in iter_host_files("antigravity"):
             if relpath != "rules/context-guard.md":
                 continue
             _write_text(os.path.join(root, ".agents", "rules", "context-guard.md"), text)
-            return [".agents/rules/context-guard.md"]
-        return []
+            return [".agents/rules/context-guard.md"], None
+        return [], None
 
     hooks_rel = os.path.join(".gemini", "config", "hooks.json")
     hooks_path = os.path.join(root, hooks_rel)
+
+    try:
+        cfg = _read_json(hooks_path)
+    except ConfigCorruptError:
+        return [], f"FAIL|HOOKS_UNPARSEABLE|{hooks_path}|{HOOKS_MANUAL_FIX}"
+    if cfg is None:
+        cfg = {}
+
+    problem = _hooks_shape_problem(cfg)
+    if problem:
+        # Reported and left alone rather than normalised. Rewriting a config
+        # into the shape this code prefers would discard whatever the user's
+        # own tooling put there, and we cannot know what that was for.
+        return [], f"FAIL|HOOKS_UNRECOGNISED|{hooks_path}|{HOOKS_MANUAL_FIX} ({problem})"
+
     snippet = json.loads(read_snippet("antigravity", "hooks"))
     new_hook = snippet["hooks"]["PreToolUse"][0]
 
-    cfg = _read_json(hooks_path) or {}
     pre_tool_use = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
     already = any(
-        h.get("matcher", {}).get("tool") == new_hook["matcher"]["tool"]
+        isinstance(h, dict)
+        and h.get("matcher", {}).get("tool") == new_hook["matcher"]["tool"]
         and h.get("matcher", {}).get("commandPattern") == new_hook["matcher"]["commandPattern"]
         for h in pre_tool_use
     )
     if not already:
         pre_tool_use.append(new_hook)
     _write_json(hooks_path, cfg)
-    return [hooks_rel.replace(os.sep, "/")]
+    return [hooks_rel.replace(os.sep, "/")], None
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +353,7 @@ def run_setup(host="all", with_mcp=False, project=None):
 
     lines = [f"Installing context-guard adapters into {root} ..."]
     touched = []
+    failures = []
 
     for name in selected:
         if name == "claude":
@@ -314,10 +363,20 @@ def run_setup(host="all", with_mcp=False, project=None):
             touched += _install_opencode(root, with_mcp, global_scope)
             lines.append("  -> OpenCode: commands installed, config merged")
         elif name == "antigravity":
-            touched += _install_antigravity(root, global_scope)
-            lines.append("  -> Antigravity: "
-                         + ("deny hook merged into ~/.gemini/config/hooks.json"
-                            if global_scope else "rule installed"))
+            # One command configures three independent hosts. A host that
+            # cannot be configured reports and steps aside: letting it abort
+            # the run would let one unrelated file on disk decide that the
+            # tool does not work on this machine.
+            host_touched, failure = _install_antigravity(root, global_scope)
+            touched += host_touched
+            if failure:
+                failures.append(failure)
+                lines.append("  -> Antigravity: hooks.json left untouched, see below")
+            elif not global_scope:
+                lines.append("  -> Antigravity: rule installed")
+            else:
+                lines.append("  -> Antigravity: deny hook merged into "
+                             "~/.gemini/config/hooks.json")
 
     for name in HOST_DIRS:
         if name in selected:
@@ -341,7 +400,16 @@ def run_setup(host="all", with_mcp=False, project=None):
     else:
         lines.append("  (none)")
 
-    return CommandResult("\n".join(lines), EXIT_OK)
+    if failures:
+        lines.append("")
+        lines.append("Failed:")
+        lines.extend(f"  {failure}" for failure in failures)
+
+    # A run where one host could not be configured is not a success, even
+    # though the others were: exiting 0 would let a caller script past a host
+    # that silently has no enforcement.
+    return CommandResult("\n".join(lines),
+                         EXIT_VALIDATION if failures else EXIT_OK)
 
 
 # ---------------------------------------------------------------------------

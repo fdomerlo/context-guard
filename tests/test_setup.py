@@ -13,6 +13,8 @@ HOME is redirected with a real environment variable rather than an injected
 parameter, so the tests exercise the same path resolution the binary uses.
 """
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -22,6 +24,7 @@ import unittest
 from unittest import mock
 
 from context_guard.guard import assets
+from context_guard.guard.cli import parse_args
 from context_guard.guard.commands import cmd_doctor, cmd_new, cmd_setup
 from context_guard.guard.errors import EXIT_OK, GuardError
 from context_guard.guard.setup import _strip_jsonc_comments
@@ -355,6 +358,129 @@ class TestUnparseableConfigIsNeverClobbered(SetupCase):
             self.assertEqual(f.read(), original)
 
 
+class HooksCase(SetupCase):
+    def hooks_path(self):
+        return self.home_path(".gemini", "config", "hooks.json")
+
+    def plant_hooks(self, raw):
+        os.makedirs(os.path.dirname(self.hooks_path()), exist_ok=True)
+        with open(self.hooks_path(), "w", encoding="utf-8") as f:
+            f.write(raw)
+        return raw
+
+    def hooks_raw(self):
+        with open(self.hooks_path(), "r", encoding="utf-8") as f:
+            return f.read()
+
+
+class TestAntigravityHooksMergeIsDefensive(HooksCase):
+    """Pre-release audit, item 1. An installer must not traceback at the sight
+    of a user's real config file.
+
+    `cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])` assumes a shape
+    nothing had verified. Against `{"hooks": [...]}` — a list where a dict was
+    assumed — it raised AttributeError and printed a raw traceback. It failed
+    before writing, so nothing was corrupted, but "it happens to crash early"
+    is not a preservation guarantee: it is the same code path that would
+    overwrite the file if the crash moved one line later.
+    """
+
+    UNRECOGNISED_SHAPES = {
+        "hooks is a list": '{"hooks": [{"matcher": {"tool": "write_file"}}]}',
+        "root is a list": '[{"hooks": {}}]',
+        "hooks is a string": '{"hooks": "none"}',
+        "PreToolUse is a dict": '{"hooks": {"PreToolUse": {"a": 1}}}',
+    }
+
+    def test_an_unrecognised_shape_is_reported_not_crashed_on(self):
+        for label, raw in self.UNRECOGNISED_SHAPES.items():
+            with self.subTest(shape=label):
+                self.setUp()
+                original = self.plant_hooks(raw)
+                res = self.setup(host="antigravity")
+                self.assertEqual(res.exit_code, 4, res.message)
+                self.assertIn("FAIL|HOOKS_UNRECOGNISED", res.message)
+                self.assertIn(self.hooks_path(), res.message)
+                self.assertIn("PERMISSIONS.md", res.message)
+                self.assertEqual(self.hooks_raw(), original,
+                                 "the file was modified despite the failure")
+
+    def test_unparseable_json_is_reported_not_crashed_on(self):
+        original = self.plant_hooks('{"hooks": {"PreToolUse": [ THIS IS NOT JSON')
+        res = self.setup(host="antigravity")
+        self.assertEqual(res.exit_code, 4, res.message)
+        self.assertIn("FAIL|HOOKS_UNPARSEABLE", res.message)
+        self.assertEqual(self.hooks_raw(), original)
+
+    def test_a_recognised_shape_still_merges_and_stays_idempotent(self):
+        """The defensive check must not become a refusal to work: the shape
+        the deny hook is designed to merge into has to keep merging, and a
+        hook the user already had has to survive."""
+        self.plant_hooks(json.dumps({"hooks": {"PreToolUse": [
+            {"matcher": {"tool": "write_file"}, "action": {"decision": "allow"}}]}}))
+
+        res = self.setup(host="antigravity")
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+
+        cfg = self.read_json(self.hooks_path())
+        tools = [h["matcher"]["tool"] for h in cfg["hooks"]["PreToolUse"]]
+        self.assertIn("write_file", tools)
+        self.assertIn("run_command", tools)
+
+        first = self.hooks_raw()
+        self.setup(host="antigravity")
+        self.assertEqual(self.hooks_raw(), first)
+
+    def test_an_empty_hooks_object_is_a_recognised_shape(self):
+        """`{}` and `{"hooks": {}}` are what a fresh config looks like. A
+        shape check strict enough to reject them would break the common case
+        in the name of the rare one."""
+        for raw in ("{}", '{"hooks": {}}'):
+            with self.subTest(raw=raw):
+                self.setUp()
+                self.plant_hooks(raw)
+                res = self.setup(host="antigravity")
+                self.assertEqual(res.exit_code, EXIT_OK, res.message)
+
+
+class TestOneHostFailingDoesNotAbortTheOthers(HooksCase):
+    """Pre-release audit, item 1. `cg setup` is one command configuring three
+    independent hosts. If a broken Antigravity config left Claude Code and
+    OpenCode unconfigured, one unrelated file on disk would silently decide
+    that the tool does not work on that machine."""
+
+    def test_claude_and_opencode_still_install(self):
+        self.detect_all_three()
+        self.plant_hooks('{"hooks": [{"matcher": {"tool": "write_file"}}]}')
+
+        res = self.setup(host="all")
+
+        self.assertTrue(os.path.exists(self.home_path(".claude", "commands", "cg-new.md")))
+        self.assertTrue(os.path.exists(
+            self.home_path(".config", "opencode", "commands", "cg-new.md")))
+
+    def test_the_summary_reports_the_failure_alongside_what_was_touched(self):
+        self.detect_all_three()
+        self.plant_hooks('{"hooks": [{"matcher": {"tool": "write_file"}}]}')
+
+        res = self.setup(host="all")
+
+        self.assertIn("FAIL|HOOKS_UNRECOGNISED", res.message)
+        self.assertIn(".claude/settings.json", res.message)
+        self.assertEqual(res.exit_code, 4, "a failed host must not report success")
+
+    def test_the_failed_file_is_not_listed_as_touched(self):
+        """A summary that lists a file it did not write sends the user
+        deleting something the installer never created."""
+        self.detect_all_three()
+        self.plant_hooks('{"hooks": [{"matcher": {"tool": "write_file"}}]}')
+
+        res = self.setup(host="all")
+
+        touched = res.message.split("Files touched:", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn("hooks.json", touched)
+
+
 class TestWithMcpFlag(SetupCase):
     def test_mcp_is_not_registered_without_the_flag(self):
         self.setup(host="claude")
@@ -413,7 +539,7 @@ class TestFilesTouchedSummary(SetupCase):
         summary: it sends the user deleting paths that were never touched."""
         self.detect_all_three()
         res = self.setup(with_mcp=True)
-        body = res.message.split("Files touched:", 1)[1]
+        body = res.message.split("Files touched:", 1)[1].split("\n\n", 1)[0]
         listed = [line.strip() for line in body.splitlines() if line.strip()]
         self.assertTrue(listed, f"no files listed in:\n{res.message}")
         for entry in listed:
