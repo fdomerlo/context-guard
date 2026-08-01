@@ -1,8 +1,8 @@
 # Changelog
 
-Todos los cambios notables en este proyecto serán documentados en este archivo.
+All notable changes to this project are documented in this file.
 
-El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/), y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
@@ -131,74 +131,74 @@ is retired; its repository now points here.
 
 ### 🔒 Git Hard Gate (Pre-Commit Hook)
 
-- Implementado un hook de pre-commit en Git (`.githooks/pre-commit`) que rechaza commits si se modifican más de 2 archivos sin una transacción de `context-guard` activa.
-- Evita cambios grandes al repositorio que esquiven el protocolo `PLAN → EXECUTE → VERIFY`.
-- Soporta bypass de emergencia usando `CONTEXT_GUARD_BYPASS=1` con registro automático en `.context-guard/bypass.log`.
+- Implemented a Git pre-commit hook (`.githooks/pre-commit`) that rejects commits touching more than 2 files without an active `context-guard` transaction.
+- Prevents large changes to the repository that bypass the `PLAN → EXECUTE → VERIFY` protocol.
+- Supports an emergency bypass via `CONTEXT_GUARD_BYPASS=1`, automatically logged to `.context-guard/bypass.log`.
 
-### 📦 Corrección de Namespace de Paquete
+### 📦 Package Namespace Fix
 
-- Se renombró el directorio fuente de `scripts/` a `context_guard/` para evitar colisiones globales en Python, estandarizando el módulo con el nombre de la herramienta.
-- Se actualizaron las importaciones internas para usar referencias relativas (`from .X import Y`) dentro del submódulo `guard`, desacoplándolo del nombre del paquete raíz.
-- Se actualizó el entrypoint en `pyproject.toml` para reflejar la nueva estructura: `context_guard.mcp_server:main`.
+- Renamed the source directory from `scripts/` to `context_guard/` to avoid global collisions in Python, standardizing the module name with the tool's name.
+- Updated internal imports to use relative references (`from .X import Y`) within the `guard` submodule, decoupling it from the root package name.
+- Updated the entry point in `pyproject.toml` to reflect the new structure: `context_guard.mcp_server:main`.
 
 ---
 
 ## [1.1.0] - 2026-07-28
 
-### 🏗️ Scaffolding Automático de Artefactos
+### 🏗️ Automatic Artifact Scaffolding
 
-- **`_scaffold_artifacts(context_path)`** en `transaction.py`:
-  - Al iniciar una transacción `PLAN` con `begin_transaction`, se auto-generan en `.context-guard/` cinco plantillas Markdown si no existen previamente: `objective.md`, `snapshot.md`, `tasks.md`, `review-report.md` y `verify-report.md`.
-  - Cada plantilla se inicializa con el marcador `[PENDING]` para guiar al LLM sobre qué campos deben completarse antes de avanzar de fase.
+- **`_scaffold_artifacts(context_path)`** in `transaction.py`:
+  - When a `PLAN` transaction starts via `begin_transaction`, five Markdown templates are auto-generated in `.context-guard/` if they do not already exist: `objective.md`, `snapshot.md`, `tasks.md`, `review-report.md`, and `verify-report.md`.
+  - Each template is initialized with the `[PENDING]` marker to guide the LLM on which fields need to be completed before advancing phase.
 
-### 🚧 Compuertas Duras (Hard Gates) en `cmd_commit`
+### 🚧 Hard Gates in `cmd_commit`
 
-- Validaciones estrictas en Python antes de autorizar transiciones de fase (sin dependencia de system prompt):
-  - **`PLAN` → `EXECUTE`**: Verifica que `objective.md` y `tasks.md` existan y no contengan `[PENDING]`. En caso contrario, retorna `EXIT_VALIDATION` con mensaje descriptivo.
-  - **`VERIFY` → `ARCHIVE`**: Verifica que `review-report.md` y `verify-report.md` existan y no contengan `[PENDING]`. En caso contrario, retorna `EXIT_VALIDATION` con mensaje descriptivo.
+- Strict Python-side validations before authorizing phase transitions (no dependency on system prompt compliance):
+  - **`PLAN` → `EXECUTE`**: Verifies that `objective.md` and `tasks.md` exist and contain no `[PENDING]`. Otherwise returns `EXIT_VALIDATION` with a descriptive message.
+  - **`VERIFY` → `ARCHIVE`**: Verifies that `review-report.md` and `verify-report.md` exist and contain no `[PENDING]`. Otherwise returns `EXIT_VALIDATION` with a descriptive message.
 
-### 📜 Docstrings MCP actualizados (`mcp_server.py`)
+### 📜 Updated MCP Docstrings (`mcp_server.py`)
 
-- `begin_transaction`: Documenta el auto-scaffolding de los 5 archivos `.md` en la fase `PLAN`.
-- `commit_transaction`: Documenta las reglas de validación estricta de Hard Gates por archivo y por fase, exponiendo las restricciones al LLM vía schema de herramientas.
+- `begin_transaction`: Documents the auto-scaffolding of the 5 `.md` files in the `PLAN` phase.
+- `commit_transaction`: Documents the strict Hard Gate validation rules per file and per phase, exposing the constraints to the LLM via the tool schema.
 
-### ✅ Mejoras en la Suite de Pruebas
+### ✅ Test Suite Improvements
 
-- Nuevos casos de prueba en `test_transaction.py`:
-  - `test_begin_valid_phase`: verifica la creación de los 5 artefactos scaffold con contenido `[PENDING]`.
-  - `test_commit_hard_gate_plan_to_execute_pending`: valida el rechazo cuando los archivos de `PLAN` contienen marcadores.
-  - `test_commit_hard_gate_verify_to_archive_pending`: valida el rechazo cuando los archivos de `VERIFY` contienen marcadores.
-- Actualización de `test_phases.py` y `test_mcp_server.py` para preparar artefactos válidos antes de cada `commit_transaction`.
-- Suite completa: **111 tests, 0 fallos**.
+- New test cases in `test_transaction.py`:
+  - `test_begin_valid_phase`: verifies creation of the 5 scaffold artifacts with `[PENDING]` content.
+  - `test_commit_hard_gate_plan_to_execute_pending`: validates rejection when `PLAN` files still contain markers.
+  - `test_commit_hard_gate_verify_to_archive_pending`: validates rejection when `VERIFY` files still contain markers.
+- Updated `test_phases.py` and `test_mcp_server.py` to prepare valid artifacts before each `commit_transaction`.
+- Full suite: **111 tests, 0 failures**.
 
 ---
 
 ## [1.0.0] - 2026-07-28
 
-### 🚀 Novedades y Características Principales
+### 🚀 Highlights and Core Features
 
-- **Servidor MCP Nativo (Model Context Protocol):**
-  - Exposición de herramientas nativas sobre transporte `stdio`: `begin_transaction`, `commit_transaction`, `rollback_transaction` y `save_checkpoint`.
-  - Integración transparente con clientes MCP como Claude Desktop, Antigravity, OpenCode y Cursor.
+- **Native MCP Server (Model Context Protocol):**
+  - Exposes native tools over `stdio` transport: `begin_transaction`, `commit_transaction`, `rollback_transaction`, and `save_checkpoint`.
+  - Transparent integration with MCP clients such as Claude Desktop, Antigravity, OpenCode, and Cursor.
 
-- **Pipeline Transaccional de 3 Estados (DAG):**
-  - Implementación estricta de la secuencia de fases: `PLAN` $\longrightarrow$ `EXECUTE` $\longrightarrow$ `VERIFY` $\longrightarrow$ `ARCHIVE`.
-  - Validación de transiciones permitidas para evitar saltos arbitarios de fase por parte del LLM.
+- **3-State Transactional Pipeline (DAG):**
+  - Strict implementation of the phase sequence: `PLAN` $\longrightarrow$ `EXECUTE` $\longrightarrow$ `VERIFY` $\longrightarrow$ `ARCHIVE`.
+  - Validates allowed transitions to prevent arbitrary phase jumps by the LLM.
 
-- **Atomicidad y Mecanismo de Rollback:**
-  - Creación automática de snapshots del `manifest.json` al ejecutar `begin_transaction`.
-  - Herramienta `rollback_transaction` para restaurar el estado exacto anterior en caso de fallos en ejecución o tests no superados en la fase `VERIFY`.
+- **Atomicity and Rollback Mechanism:**
+  - Automatic `manifest.json` snapshots taken on `begin_transaction`.
+  - `rollback_transaction` tool restores the exact prior state on execution failures or failed tests during the `VERIFY` phase.
 
-- **Control de Concurrencia y Write Lock (OS-level):**
-  - Implementación de locks de sesión y mutexes de escritura a nivel de sistema operativo (`O_CREAT|O_EXCL`) para prevenir condiciones de carrera (*TOCTOU*) entre agentes o sesiones simultáneas.
-  - Detección automática y recuperación de locks huérfanos (*stale locks*) mediante verificación de PID y timestamping.
+- **Concurrency Control and Write Lock (OS-level):**
+  - OS-level session locks and write mutexes (`O_CREAT|O_EXCL`) to prevent race conditions (*TOCTOU*) between concurrent agents or sessions.
+  - Automatic detection and recovery of orphaned (*stale*) locks via PID verification and timestamping.
 
-- **Anclaje de Rutas Absolutas por Proyecto:**
-  - Persistencia aislada y transparente dentro del directorio raíz de cada proyecto (`<PROJECT_ROOT>/.context-guard/`), eliminando la contaminación del directorio personal (`$HOME`).
+- **Per-Project Absolute Path Anchoring:**
+  - Isolated, transparent persistence inside each project's root directory (`<PROJECT_ROOT>/.context-guard/`), eliminating contamination of the home directory (`$HOME`).
 
-- **Empaquetado Estándar y Soporte Zero-Install (`uvx`):**
-  - Incorporación de `pyproject.toml` con backend `hatchling` y punto de entrada executable `context-guard`.
-  - Soporte de ejecución en una sola línea sin clonación previa utilizando `uvx git+https://github.com/fdomerlo/context-guard.git`.
+- **Standard Packaging and Zero-Install Support (`uvx`):**
+  - Added `pyproject.toml` with the `hatchling` backend and the `context-guard` executable entry point.
+  - Supports one-line execution with no prior clone via `uvx git+https://github.com/fdomerlo/context-guard.git`.
 
-- **Optimización de Tool Discovery (i18n):**
-  - Docstrings y auto-resúmenes estandarizados en inglés para maximizar la adherencia de modelos de lenguaje en el descubrimiento y selección de herramientas.
+- **Tool Discovery Optimization (i18n):**
+  - Docstrings and auto-summaries standardized in English to maximize language model adherence during tool discovery and selection.

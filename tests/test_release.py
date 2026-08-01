@@ -1,8 +1,9 @@
 """F5: PLAN.md 0.1 decided the major bump communicates the merge (2.0.0), and
-F5 asks for a CHANGELOG entry citing it. Historical 1.x entries are left in
-Spanish — they are a historical record, not a live artifact, the same reason
-past commit messages are not rewritten. Only the new 2.0.0 entry is held to
-the English rule.
+F5 asks for a CHANGELOG entry citing it. Historical 1.x entries were
+originally left in Spanish as a historical record, not a live artifact — F8
+8.1.3 overrode that judgment call explicitly ("CHANGELOG.md íntegramente en
+inglés") and had them translated. `test_historical_entries_are_untouched`
+checks the sections were translated, not deleted or reworded beyond that.
 
 Also pins the sdist packaging fix found while preparing the release: a
 `uv build` sdist bundled .claude/settings.local.json — untracked, ignored by
@@ -75,17 +76,24 @@ class TestChangelogEntry(unittest.TestCase):
         self.assertIn("state-guard", section.lower())
 
     def test_2_0_0_entry_is_english(self):
-        """Only the new entry — the 1.x history below it stays as written."""
         section = self._section("2.0.0")
         spanish_count = sum(section.lower().count(c) for c in SPANISH_INDICATORS)
         self.assertLessEqual(spanish_count, 3, "the 2.0.0 CHANGELOG entry must be in English")
 
     def test_historical_entries_are_untouched(self):
-        """Rewriting the 1.x history would be revising a record, not writing
-        one — the same reason past commit messages are not edited."""
+        """Translated in F8, but the sections themselves — same versions,
+        same facts — must still be there afterward, not dropped."""
         self._section("1.2.0")
         self._section("1.1.0")
         self._section("1.0.0")
+
+    def test_whole_file_is_english(self):
+        """PLAN.md F8 8.1.3: 'CHANGELOG.md íntegramente en inglés' — F8
+        explicitly overrides F5's "historical entries stay as written"
+        judgment call for this one file. Header and 1.x entries included,
+        not just the 2.0.0 section checked above."""
+        spanish_count = sum(self.text.lower().count(c) for c in SPANISH_INDICATORS)
+        self.assertLessEqual(spanish_count, 3, "CHANGELOG.md must be entirely in English (PLAN.md F8 8.1.3)")
 
 
 if __name__ == "__main__":
