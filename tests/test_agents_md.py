@@ -53,6 +53,12 @@ class TestAgentsMd(unittest.TestCase):
     def test_documents_the_approval_required_exit_code(self):
         self.assertIn("APPROVAL_REQUIRED", self.text)
 
+    def test_documents_files_in_scope_and_threshold_as_manual_fields(self):
+        """PLAN.md F7: neither field has a writer command. Left undocumented,
+        a reader would reasonably assume one exists and go looking for it."""
+        self.assertIn("files_in_scope", self.text)
+        self.assertIn("manual-only", self.text)
+
     def test_documents_phases_directory(self):
         self.assertRegex(
             self.text, r"phases/",

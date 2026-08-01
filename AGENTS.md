@@ -85,3 +85,8 @@ confirms it out of band, not just in the conversation.
   which wins. Files outside `files_in_scope` warn, never block. Bypass:
   `CONTEXT_GUARD_BYPASS=1 CONTEXT_GUARD_BYPASS_REASON='...' git commit ...`
   — recorded in `.context-guard/bypass.log`.
+- `files_in_scope` and `hook.file_threshold` are manual-only fields: no `cg`
+  command writes either one. To use them, edit
+  `.context-guard/changes/<name>/manifest.json` directly — `files_in_scope`
+  is a list of path prefixes, `hook` is `{"file_threshold": <int>}`. Both
+  default to unset (empty scope, threshold 2) and work fine left alone.
