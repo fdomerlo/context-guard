@@ -12,6 +12,7 @@ from .commands import (
     cmd_approve,
     cmd_check_lock,
     cmd_new,
+    cmd_setup,
     cmd_list,
     cmd_migrate,
     cmd_claim,
@@ -129,6 +130,24 @@ def parse_args(argv=None):
     p_new = subparsers.add_parser("new")
     p_new.add_argument("--context", required=True)
     p_new.add_argument("name")
+    p_new.add_argument("--host", choices=["claude", "opencode", "antigravity"],
+                       default=None,
+                       help="Also materialise this host's workspace files "
+                            "(Antigravity's rule file). Detected automatically "
+                            "when omitted.")
+
+    # setup takes no --context: it configures hosts, not a change. --project
+    # opts back into 2.0's per-project install for teams committing the config.
+    p_setup = subparsers.add_parser("setup")
+    p_setup.add_argument("--host", choices=["claude", "opencode", "antigravity", "all"],
+                         default="all")
+    p_setup.add_argument("--with-mcp", action="store_true",
+                         help="Also register the context-guard-mcp server. "
+                              "Optional: every adapter works without it — MCP "
+                              "is an alternative transport, not a requirement.")
+    p_setup.add_argument("--project", default=None,
+                         help="Install into this project instead of the user's "
+                              "home directory.")
 
     p_list = subparsers.add_parser("list")
     p_list.add_argument("--context", required=True)
@@ -139,7 +158,7 @@ def parse_args(argv=None):
     # Every context-scoped command accepts --change. Omitting it is only safe
     # when exactly one change is active; ambiguity is an error, never a guess.
     for sub in subparsers.choices.values():
-        if sub in (p_list, p_new, p_migrate):
+        if sub in (p_list, p_new, p_migrate, p_setup):
             continue
         sub.add_argument("--change", default=None,
                          help="Change to operate on (required if several are active)")
@@ -155,7 +174,9 @@ def dispatch(args):
     """
     change = getattr(args, "change", None)
     handlers = {
-        "new": lambda: cmd_new(args.context, args.name),
+        "new": lambda: cmd_new(args.context, args.name, args.host),
+        "setup": lambda: cmd_setup(
+            host=args.host, with_mcp=args.with_mcp, project=args.project),
         "list": lambda: cmd_list(args.context),
         "migrate": lambda: cmd_migrate(args.context),
         "begin": lambda: cmd_begin(args.context, args.phase, args.ttl, change),

@@ -28,6 +28,13 @@ from .transaction import (
     cmd_checkpoint,
 )
 from .migrate import cmd_migrate
+from .setup import (
+    antigravity_detected,
+    diverged_phases,
+    materialise_antigravity_rule,
+    materialise_phases,
+    run_setup,
+)
 from .errors import (
     CommandResult,
     EXIT_OK,
@@ -87,7 +94,12 @@ def _pid_is_alive(pid):
 # Changes
 # ---------------------------------------------------------------------------
 
-def cmd_new(context, change):
+def cmd_setup(host="all", with_mcp=False, project=None):
+    """Install the host adapters. See guard/setup.py for the scope rules."""
+    return run_setup(host=host, with_mcp=with_mcp, project=project)
+
+
+def cmd_new(context, change, host=None):
     """Crea un change nuevo y deja la fase PLAN iniciada.
 
     Beginning PLAN here rather than leaving it to a separate call is
@@ -116,6 +128,13 @@ def cmd_new(context, change):
     begin = cmd_begin(context, "PLAN", change=name)
     if begin.exit_code != EXIT_OK:
         return begin
+
+    # The installed slash commands point at .context-guard/phases/*.md, so a
+    # project only becomes operable once those exist. Writing them here is
+    # what lets a global `cg setup` work in a project nobody prepared.
+    materialise_phases(context)
+    if host == "antigravity" or (host is None and antigravity_detected()):
+        materialise_antigravity_rule(context)
 
     return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}|phase=PLAN", EXIT_OK)
 
@@ -628,6 +647,16 @@ def cmd_doctor(context, fix=False, change=None):
         findings.append("ERROR: No task file found (need tasks.md)")
 
     # 3. Check for non-ASCII in artifacts (removed from doctor, moved to validate)
+
+    # 3b. Phase documents that differ from the embedded copy. Reported as
+    # INFO, never as a problem: `cg new` deliberately refuses to overwrite a
+    # customised phase file, so a project that tailored one would otherwise
+    # look permanently broken. Informational findings must not move the exit
+    # code — that is what makes them informational.
+    for fname in diverged_phases(context):
+        findings.append(
+            f"INFO: .context-guard/phases/{fname} differs from the packaged "
+            f"copy (customised locally; it is never overwritten)")
 
     # 4. Check stale task claims
     claims = m.get("task_claims", {})

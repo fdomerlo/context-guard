@@ -108,9 +108,13 @@ class TestSdistCarriesTheData(BuiltArtifactCase):
                 self.assertIn(f"context_guard/_data/{relpath}", names)
 
 
-class TestWheelResolvesAssetsInACleanVenv(BuiltArtifactCase):
-    """The acceptance criterion, verbatim: "wheel instalado en venv limpio
-    resuelve los tres assets de fase y todos los snippets sin acceso al repo".
+class TestTheInstalledWheelWorksOnACleanMachine(BuiltArtifactCase):
+    """Two acceptance criteria, both read verbatim, sharing one built wheel
+    and one clean venv because provisioning them twice doubles the slowest
+    test in the suite for no extra coverage.
+
+    F1: "wheel instalado en venv limpio resuelve los tres assets de fase y
+    todos los snippets sin acceso al repo".
 
     The subprocess runs with a working directory outside the repo and no
     PYTHONPATH, so the only copy of context_guard reachable is the one pip
@@ -190,6 +194,67 @@ json.dump(out, sys.stdout)
         hosts = self._probe()["hosts"]
         self.assertIn("commands/cg-new.md", hosts["claude-code"])
         self.assertIn("rules/context-guard.md", hosts["antigravity"])
+
+    # --- F2: "pip install <wheel> && cg setup deja los tres hosts
+    # configurados" on a simulated clean machine ---
+
+    def _cg(self, *args, home=None):
+        cg = os.path.join(os.path.dirname(self.python), "cg")
+        if not os.path.exists(cg):
+            cg = os.path.join(os.path.dirname(self.python), "cg.exe")
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env["HOME"] = home
+        with tempfile.TemporaryDirectory() as outside:
+            return subprocess.run([cg, *args], cwd=outside, env=env,
+                                  capture_output=True, text=True)
+
+    def _fake_machine(self):
+        """A HOME with the three hosts' config directories already present, so
+        `cg setup` detects all of them without being told."""
+        home = tempfile.mkdtemp(prefix="guard_clean_machine_")
+        self.addCleanup(shutil.rmtree, home, True)
+        os.makedirs(os.path.join(home, ".config", "opencode"))
+        os.makedirs(os.path.join(home, ".gemini"))
+        return home
+
+    def test_cg_setup_configures_all_three_hosts(self):
+        home = self._fake_machine()
+        res = self._cg("setup", home=home)
+        self.assertEqual(res.returncode, 0, res.stderr or res.stdout)
+        for relpath in (".claude/commands/cg-new.md",
+                        ".claude/settings.json",
+                        ".config/opencode/commands/cg-new.md",
+                        ".config/opencode/opencode.json",
+                        ".gemini/config/hooks.json"):
+            with self.subTest(path=relpath):
+                self.assertTrue(os.path.exists(os.path.join(home, relpath)),
+                                f"{relpath} was not configured by cg setup")
+
+    def test_a_second_setup_run_changes_nothing(self):
+        home = self._fake_machine()
+        self.assertEqual(self._cg("setup", home=home).returncode, 0)
+        first = {p: open(os.path.join(dp, n), encoding="utf-8", errors="replace").read()
+                 for dp, _d, fs in os.walk(home) for n in fs
+                 for p in [os.path.relpath(os.path.join(dp, n), home)]}
+        self.assertEqual(self._cg("setup", home=home).returncode, 0)
+        second = {p: open(os.path.join(dp, n), encoding="utf-8", errors="replace").read()
+                  for dp, _d, fs in os.walk(home) for n in fs
+                  for p in [os.path.relpath(os.path.join(dp, n), home)]}
+        self.assertEqual(second, first)
+
+    def test_cg_new_makes_a_virgin_project_operable(self):
+        """"cg new demo --context <proyecto-virgen> deja el proyecto operable"
+        — operable meaning the phase files the installed commands point at are
+        actually there."""
+        home = self._fake_machine()
+        project = tempfile.mkdtemp(prefix="guard_virgin_project_")
+        self.addCleanup(shutil.rmtree, project, True)
+        res = self._cg("new", "demo", "--context", project, home=home)
+        self.assertEqual(res.returncode, 0, res.stderr or res.stdout)
+        for name in ("plan.md", "execute.md", "verify.md"):
+            self.assertTrue(
+                os.path.exists(os.path.join(project, ".context-guard", "phases", name)),
+                f".context-guard/phases/{name} is missing from a fresh project")
 
 
 class TestPackagingTestRunsInCI(unittest.TestCase):
