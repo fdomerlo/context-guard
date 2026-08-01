@@ -14,15 +14,20 @@ set -euo pipefail
 # explicitly is itself the signal, so detection does not apply.
 
 usage() {
-    echo "Usage: ./install.sh [target-project-dir] [--host claude|opencode|antigravity|all]"
+    echo "Usage: ./install.sh [target-project-dir] [--host claude|opencode|antigravity|all] [--with-mcp]"
     echo "Installs the context-guard adapters for Claude Code, OpenCode, and"
     echo "Antigravity, all per-project."
     echo "  --host <name>  Install only this host, regardless of detection."
     echo "                 One of: claude, opencode, antigravity, all (default: all)."
+    echo "  --with-mcp     Also register the context-guard-mcp server for the"
+    echo "                 hosts being installed. Optional: every adapter works"
+    echo "                 completely without it — MCP is an alternative"
+    echo "                 transport, not a requirement."
 }
 
 TARGET_ARG="."
 HOST="all"
+WITH_MCP=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -40,6 +45,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --host=*)
             HOST="${1#--host=}"
+            shift
+            ;;
+        --with-mcp)
+            WITH_MCP=1
             shift
             ;;
         -*)
@@ -130,6 +139,31 @@ with open(settings_path, "w", encoding="utf-8") as f:
 PY
 echo "  -> Claude Code: cg approve added to the ask list in .claude/settings.json"
 echo "     (what that prompt does and does not guarantee: adapters/claude-code/PERMISSIONS.md)"
+
+if [[ "$WITH_MCP" == "1" ]]; then
+    python3 - "$TARGET_DIR/.mcp.json" "$SCRIPT_DIR/claude-code/mcp.snippet.json" <<'PY'
+import json
+import sys
+
+config_path, snippet_path = sys.argv[1], sys.argv[2]
+with open(snippet_path, "r", encoding="utf-8") as f:
+    snippet = json.load(f)
+
+try:
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    cfg = {}
+
+servers = cfg.setdefault("mcpServers", {})
+servers.setdefault("context-guard", snippet["mcpServers"]["context-guard"])
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PY
+    echo "  -> Claude Code: context-guard-mcp registered in .mcp.json"
+fi
 else
     echo "  -> Claude Code: skipped (--host $HOST)"
 fi
@@ -157,7 +191,7 @@ with open(permissions_snippet_path, "r", encoding="utf-8") as f:
 
 try:
     with open(config_path, "r", encoding="utf-8") as f:
-        raw = re.sub(r"//.*?\n|/\*.*?\*/", "", f.read(), flags=re.S)
+        raw = re.sub(r"(?<!:)//.*?\n|/\*.*?\*/", "", f.read(), flags=re.S)
     cfg = json.loads(raw)
 except (FileNotFoundError, json.JSONDecodeError):
     cfg = {"$schema": "https://opencode.ai/config.json", "agent": {}}
@@ -178,6 +212,29 @@ with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 PY
+    if [[ "$WITH_MCP" == "1" ]]; then
+        python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/mcp.snippet.json" <<'PY'
+import json
+import re
+import sys
+
+config_path, snippet_path = sys.argv[1], sys.argv[2]
+with open(snippet_path, "r", encoding="utf-8") as f:
+    snippet = json.load(f)
+
+with open(config_path, "r", encoding="utf-8") as f:
+    raw = re.sub(r"(?<!:)//.*?\n|/\*.*?\*/", "", f.read(), flags=re.S)
+cfg = json.loads(raw)
+
+servers = cfg.setdefault("mcp", {})
+servers.setdefault("context-guard", snippet["mcp"]["context-guard"])
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, indent=2)
+    f.write("\n")
+PY
+        echo "  -> OpenCode: context-guard-mcp registered in opencode.json"
+    fi
     echo "  -> OpenCode: commands in .opencode/commands/, config merged into opencode.json"
     echo "     (permission setup, unverified against a real host: adapters/opencode/PERMISSIONS.md)"
 elif [[ "$HOST" == "all" ]]; then

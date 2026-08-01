@@ -29,6 +29,14 @@ If you enable auto-run for convenience, understand what you are turning off:
 the pipeline becomes fully cooperative, and the manifest's `approval_history`
 becomes a record of what the agent did rather than of what you authorized.
 
+## MCP registration
+
+`install.sh` does not automate this for Antigravity — the CLI's MCP config
+lives in user/plugin config, not project config, so there is nothing safe to
+merge into the repo. Register manually: add an MCP server entry pointing
+`command` at `context-guard-mcp` in your Antigravity plugin/MCP settings.
+Registration is optional; every adapter here works completely without it.
+
 ## Unverified
 
 **This adapter is unverified.** It was ported from state-guard and is covered

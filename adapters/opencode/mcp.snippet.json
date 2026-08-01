@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "context-guard": {
+      "type": "local",
+      "command": ["context-guard-mcp"],
+      "enabled": true
+    }
+  }
+}

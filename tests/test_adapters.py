@@ -228,6 +228,42 @@ class TestAntigravityAdapterIsPerProject(unittest.TestCase):
         )
 
 
+class TestMcpRegistrationSnippets(unittest.TestCase):
+    """F6 6.0.8: nobody registered the MCP server. It is a channel separate
+    from the adapters (not a skill, not a command) and needs explicit
+    per-host registration — install.sh did none of it for any host."""
+
+    def test_claude_code_mcp_snippet_is_valid(self):
+        path = os.path.join(CLAUDE_CODE_DIR, "mcp.snippet.json")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["mcpServers"]["context-guard"]["command"], "context-guard-mcp")
+
+    def test_opencode_mcp_snippet_is_valid(self):
+        path = os.path.join(OPENCODE_DIR, "mcp.snippet.json")
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertIn("context-guard", data["mcp"])
+
+    def test_antigravity_documents_manual_registration(self):
+        """PLAN.md 6.1: not automated in 2.0 — a short manual instruction is
+        enough, since the CLI's MCP config lives in user/plugin config this
+        installer does not touch."""
+        path = os.path.join(ADAPTERS_DIR, "antigravity", "PERMISSIONS.md")
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("context-guard-mcp", text)
+
+    def test_mcp_is_documented_as_optional(self):
+        """PLAN.md 6.1: 'el MCP es transporte alternativo, no requisito — los
+        adapters funcionan completos sin él. install.sh lo dice en su
+        output.'"""
+        with open(INSTALL_SH, "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("--with-mcp", text)
+        self.assertIn("optional", text.lower())
+
+
 class TestNoStaleSlashCommandReferences(unittest.TestCase):
     """F6 6.0.7: renaming /new -> /cg-new and /continue -> /cg-continue is
     only a fix if nothing else in the repo still points at the old names —
@@ -397,6 +433,41 @@ class TestOpenCodeInstallsPerProject(InstallShRunCase):
                 text = f.read()
             self.assertNotRegex(text, ABS_PATH_RE, f"{name} embeds an absolute path")
 
+    def test_a_url_bearing_preexisting_config_is_not_silently_discarded(self):
+        """Found while wiring --with-mcp: the JSONC comment-stripping regex
+        (r'//.*?\\n') matched the "//" in "https://opencode.ai/config.json"
+        and ate the rest of that line, corrupting the file. The broad
+        except (FileNotFoundError, JSONDecodeError) around the parse then
+        silently treated the corrupted read as "no config yet" and
+        overwrote it — every run of the installer against a config
+        containing that (very standard) $schema URL was quietly discarding
+        the file's actual content, including anything the user had
+        customized by hand. A plain "did $schema survive" check does not
+        catch this: the except branch's own fallback happens to hardcode
+        the same URL, masking the corruption. A marker key with no such
+        lucky fallback does. The regex only misfires once the $schema line
+        is followed by a real newline before EOF — a single-line JSON seed
+        does not reproduce it, so this drives install.sh once first (its own
+        writes are pretty-printed with indent=2, i.e. real newlines) and
+        plants the marker into that pretty file before the second run, which
+        is the one that reads it back and corrupts it."""
+        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+
+        cfg_path = os.path.join(self.target, "opencode.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertEqual(cfg["$schema"], "https://opencode.ai/config.json")
+        cfg["my_custom_setting"] = "keep-me"
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+
+        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertEqual(cfg.get("my_custom_setting"), "keep-me")
+
     def test_config_is_merged_into_the_project_opencode_json(self):
         res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
         self.assertEqual(res.returncode, 0, res.stderr)
@@ -500,6 +571,53 @@ class TestHostFlagSelectsWhichHostsInstall(InstallShRunCase):
         res = subprocess.run(["bash", INSTALL_SH, "--help"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0)
         self.assertIn("--host", res.stdout)
+
+
+class TestWithMcpFlag(InstallShRunCase):
+    def test_mcp_json_is_not_created_without_the_flag(self):
+        res = self.run_install("--host", "claude")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.target, ".mcp.json")))
+
+    def test_with_mcp_registers_claude_code_mcp_json(self):
+        res = self.run_install("--host", "claude", "--with-mcp")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        mcp_path = os.path.join(self.target, ".mcp.json")
+        self.assertTrue(os.path.exists(mcp_path), ".mcp.json was not created")
+        with open(mcp_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertEqual(cfg["mcpServers"]["context-guard"]["command"], "context-guard-mcp")
+
+    def test_with_mcp_registers_opencode_mcp_block(self):
+        res = self.run_install("--host", "opencode", "--with-mcp")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        cfg_path = os.path.join(self.target, "opencode.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertIn("context-guard", cfg.get("mcp", {}))
+
+    def test_running_with_mcp_twice_is_idempotent(self):
+        self.run_install("--host", "claude", "--with-mcp")
+        res = self.run_install("--host", "claude", "--with-mcp")
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        with open(os.path.join(self.target, ".mcp.json"), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertEqual(cfg["mcpServers"]["context-guard"]["command"], "context-guard-mcp")
+
+    def test_a_preexisting_mcp_server_entry_survives(self):
+        os.makedirs(self.target, exist_ok=True)
+        with open(os.path.join(self.target, ".mcp.json"), "w", encoding="utf-8") as f:
+            json.dump({"mcpServers": {"other-tool": {"command": "other-tool-mcp"}}}, f)
+
+        self.run_install("--host", "claude", "--with-mcp")
+
+        with open(os.path.join(self.target, ".mcp.json"), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        self.assertIn("other-tool", cfg["mcpServers"])
+        self.assertIn("context-guard", cfg["mcpServers"])
 
 
 class TestInstallSh(unittest.TestCase):
