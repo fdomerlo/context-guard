@@ -29,6 +29,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   automated. It is audit metadata: who to ask about an approval later. The
   authentication was and remains the harness permission prompt, which the
   Threat Model now says explicitly.
+- Naming a change that does not exist reports
+  `FAIL|CHANGE_NOT_FOUND|<name>|available: <list>` instead of
+  `FAIL|NO_SESSION`, which read as a broken project rather than a typo. A
+  mistyped name also no longer creates the change it names: `begin` used to
+  answer a misspelling by bringing that change into being.
 - `cg new` materialises `.context-guard/phases/*.md` into the project from the
   packaged copy, which is what makes a globally installed slash command work
   in a project nobody prepared. A phase file that already exists is never

@@ -10,6 +10,7 @@ from datetime import datetime
 
 from .paths import (
     get_paths,
+    missing_session_result,
     generate_agent_id,
     get_archive_dir,
     get_changes_dir,
@@ -248,7 +249,7 @@ def cmd_claim_task(context, task_id, agent_id=None, lease_seconds=DEFAULT_LEASE_
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
         tasks = m.setdefault("task_claims", {})
         existing = tasks.get(task_id)
 
@@ -292,7 +293,7 @@ def cmd_release_task(context, task_id, agent_id=None, force=False, change=None):
     def _do():
         m = load_manifest(context, change)
         if not m:
-            return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+            return missing_session_result(context, change)
         tasks = m.get("task_claims", {})
         task = tasks.get(task_id)
         # Checked before identity: you cannot violate the ownership of a claim
@@ -490,7 +491,7 @@ def cmd_next_task(context, agent_id=None, change=None):
     p = get_paths(context, change)
     m = load_manifest(context, change)
     if not m:
-        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+        return missing_session_result(context, change)
 
     # Buscar en tasks.md
     all_tasks = []
@@ -530,7 +531,7 @@ def cmd_status(context, change=None):
     lines = []
 
     if not m:
-        return CommandResult("FAIL|NO_SESSION", EXIT_GENERIC)
+        return missing_session_result(context, change)
 
     lines.append(f"CONTEXT: {m.get('context_name', context)}")
 

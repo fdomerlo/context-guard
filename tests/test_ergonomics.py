@@ -175,6 +175,65 @@ class TestApproveDefaultsToTheOsUser(ErgonomicsCase):
         self.assertTrue(who and who.strip())
 
 
+class TestMistypedChangeIsReportedAsSuch(ErgonomicsCase):
+    """F2.1 point 3. Reporting a typo as "no session" sends the user looking
+    for a broken project instead of at the name they just mistyped — and the
+    approval gate is exactly where a human is typing a change name by hand."""
+
+    def assertChangeNotFound(self, res, typo, available):
+        self.assertEqual(res.exit_code, EXIT_GENERIC, res.message)
+        self.assertIn(f"FAIL|CHANGE_NOT_FOUND|{typo}", res.message)
+        self.assertIn("available:", res.message)
+        for name in available:
+            self.assertIn(name, res.message)
+
+    def test_approve_with_a_typo(self):
+        self.planned_change("alpha")
+        res = cmd_approve(self.context, by="fdomerlo", change="alpah")
+        self.assertChangeNotFound(res, "alpah", ["alpha"])
+
+    def test_status_with_a_typo(self):
+        self.planned_change("alpha")
+        res = cmd_status(self.context, change="alpah")
+        self.assertChangeNotFound(res, "alpah", ["alpha"])
+
+    def test_begin_with_a_typo(self):
+        self.planned_change("alpha")
+        res = cmd_begin(self.context, "PLAN", change="alpah")
+        self.assertChangeNotFound(res, "alpah", ["alpha"])
+
+    def test_every_active_change_is_listed(self):
+        self.planned_change("alpha")
+        self.planned_change("beta")
+        res = cmd_status(self.context, change="gamma")
+        self.assertChangeNotFound(res, "gamma", ["alpha", "beta"])
+
+    def test_a_typo_does_not_create_the_change_it_names(self):
+        """The sharp edge this replaces: taking the write lock creates the
+        change directory as a side effect, so a mistyped name could invent
+        the very change the user thought they were operating on."""
+        self.planned_change("alpha")
+        cmd_approve(self.context, by="fdomerlo", change="alpah")
+        cmd_begin(self.context, "PLAN", change="alpah")
+        self.assertFalse(
+            os.path.exists(os.path.join(
+                self.context, ".context-guard", "changes", "alpah")),
+            "a mistyped change name created a directory",
+        )
+
+    def test_an_empty_project_says_so_instead_of_listing_nothing(self):
+        res = cmd_status(self.context, change="ghost")
+        self.assertEqual(res.exit_code, EXIT_GENERIC, res.message)
+        self.assertIn("FAIL|CHANGE_NOT_FOUND|ghost", res.message)
+
+    def test_no_change_named_and_none_active_is_still_no_session(self):
+        """Unchanged behaviour: with no name given there is no typo to report,
+        and the caller's problem is that the project has no session at all."""
+        res = cmd_status(self.context)
+        self.assertEqual(res.exit_code, EXIT_GENERIC, res.message)
+        self.assertIn("NO_SESSION", res.message)
+
+
 class TestAdaptersDropTheRedundantFlag(unittest.TestCase):
     """F2.1 point 1: "Los adapters se simplifican quitando `--context .`"."""
 
