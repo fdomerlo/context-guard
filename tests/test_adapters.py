@@ -714,6 +714,79 @@ class TestWithAntigravityHookFlag(InstallShRunCase):
         self.assertIn("run_command", tools)
 
 
+class TestAcceptanceCriteria(InstallShRunCase):
+    """PLAN.md F6 acceptance criteria #2 and #3, checked literally rather
+    than piecemeal. FORCE_OPENCODE/FORCE_ANTIGRAVITY stand in for real
+    detection: neither host is installed in this environment, so --host all
+    alone would only exercise Claude Code."""
+
+    FORCE_ALL = {"FORCE_OPENCODE": "1", "FORCE_ANTIGRAVITY": "1"}
+
+    def _walk_text_files(self, root):
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for name in filenames:
+                path = os.path.join(dirpath, name)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        yield path, f.read()
+                except (UnicodeDecodeError, OSError):
+                    continue
+
+    def test_host_all_installs_every_hosts_artifacts_with_no_absolute_paths(self):
+        res = self.run_install("--host", "all", env_overrides=self.FORCE_ALL)
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".claude", "commands", "cg-new.md")))
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".opencode", "commands", "cg-new.md")))
+        self.assertTrue(os.path.exists(os.path.join(self.target, ".agents", "rules", "context-guard.md")))
+
+        with open(os.path.join(self.target, ".claude", "settings.json"), "r", encoding="utf-8") as f:
+            claude_cfg = json.load(f)
+        self.assertIn("Bash(cg approve*)", claude_cfg["permissions"]["ask"])
+
+        with open(os.path.join(self.target, "opencode.json"), "r", encoding="utf-8") as f:
+            opencode_cfg = json.load(f)
+        self.assertIn("context-guard", opencode_cfg["agent"])
+
+        for path, text in self._walk_text_files(self.target):
+            with self.subTest(file=path):
+                self.assertNotRegex(text, ABS_PATH_RE, f"{path} embeds an absolute path")
+
+    def test_second_run_against_populated_configs_changes_nothing(self):
+        """6.4: run twice against a toy project with preexisting configs
+        already populated; the second run's diff must be empty and nothing
+        the user already had gets clobbered."""
+        os.makedirs(os.path.join(self.target, ".claude"), exist_ok=True)
+        with open(os.path.join(self.target, ".claude", "settings.json"), "w", encoding="utf-8") as f:
+            json.dump({"permissions": {"ask": ["Bash(git push*)"], "deny": ["Bash(rm -rf /*)"]}}, f)
+        with open(os.path.join(self.target, "opencode.json"), "w", encoding="utf-8") as f:
+            json.dump({"$schema": "https://opencode.ai/config.json", "my_setting": "keep-me"}, f, indent=2)
+
+        res1 = self.run_install("--host", "all", "--with-mcp", env_overrides=self.FORCE_ALL)
+        self.assertEqual(res1.returncode, 0, res1.stderr)
+
+        snapshot = tempfile.mkdtemp(prefix="guard_install_snapshot_")
+        shutil.rmtree(snapshot)
+        shutil.copytree(self.target, snapshot)
+
+        res2 = self.run_install("--host", "all", "--with-mcp", env_overrides=self.FORCE_ALL)
+        self.assertEqual(res2.returncode, 0, res2.stderr)
+
+        diff = subprocess.run(
+            ["diff", "-r", snapshot, self.target], capture_output=True, text=True,
+        )
+        self.assertEqual(diff.returncode, 0, f"second run changed files:\n{diff.stdout}")
+        shutil.rmtree(snapshot, ignore_errors=True)
+
+        with open(os.path.join(self.target, ".claude", "settings.json"), "r", encoding="utf-8") as f:
+            claude_cfg = json.load(f)
+        self.assertIn("Bash(git push*)", claude_cfg["permissions"]["ask"])
+        self.assertIn("Bash(rm -rf /*)", claude_cfg["permissions"]["deny"])
+        with open(os.path.join(self.target, "opencode.json"), "r", encoding="utf-8") as f:
+            opencode_cfg = json.load(f)
+        self.assertEqual(opencode_cfg["my_setting"], "keep-me")
+
+
 class TestInstallSh(unittest.TestCase):
     def setUp(self):
         self.assertTrue(os.path.exists(INSTALL_SH), "adapters/install.sh is missing")
