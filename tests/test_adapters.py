@@ -203,6 +203,31 @@ class TestClaudeCodeAndOpenCodeExposeTheSameCommands(unittest.TestCase):
         self.assertEqual(claude_names, {"cg-new.md", "cg-continue.md"})
 
 
+class TestAntigravityAdapterIsPerProject(unittest.TestCase):
+    """F6 6.0.4: the bootstrap was injected into ~/.gemini/GEMINI.md, global
+    to every project the user has — a control meant to apply to one repo
+    contaminated all of them. The correct, IDE+CLI+Manager-supported location
+    is the workspace rule file, which travels with the repo."""
+
+    RULE_PATH = os.path.join(ADAPTERS_DIR, "antigravity", "rules", "context-guard.md")
+    OLD_SNIPPET_PATH = os.path.join(ADAPTERS_DIR, "antigravity", "bootstrap.snippet.md")
+
+    def test_rule_file_exists_at_the_new_location(self):
+        self.assertTrue(os.path.exists(self.RULE_PATH), "adapters/antigravity/rules/context-guard.md is missing")
+        with open(self.RULE_PATH, "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("cg approve", text)
+        self.assertIn("AGENTS.md", text)
+
+    def test_old_global_snippet_path_is_gone(self):
+        """A stale copy left behind is a second source of truth that can
+        drift from the one install.sh actually uses."""
+        self.assertFalse(
+            os.path.exists(self.OLD_SNIPPET_PATH),
+            "adapters/antigravity/bootstrap.snippet.md should be replaced by rules/context-guard.md, not kept alongside it",
+        )
+
+
 class TestNoStaleSlashCommandReferences(unittest.TestCase):
     """F6 6.0.7: renaming /new -> /cg-new and /continue -> /cg-continue is
     only a fix if nothing else in the repo still points at the old names —
@@ -401,6 +426,37 @@ class TestOpenCodeInstallsPerProject(InstallShRunCase):
         # future rewrite of the merge does not regress to a list-append that
         # would grow unboundedly across reinstalls.
         self.assertEqual(cfg["permission"]["bash"]["cg approve*"], "ask")
+
+
+class TestAntigravityInstallsPerProject(InstallShRunCase):
+    def test_rule_file_lands_in_the_target_project(self):
+        res = self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        rule_path = os.path.join(self.target, ".agents", "rules", "context-guard.md")
+        self.assertTrue(os.path.exists(rule_path), ".agents/rules/context-guard.md was not installed")
+        with open(rule_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("cg approve", text)
+
+    def test_gemini_md_is_not_touched(self):
+        self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
+        self.assertFalse(
+            os.path.exists(os.path.join(self.home, ".gemini", "GEMINI.md")),
+            "the global GEMINI.md injection must be gone",
+        )
+
+    def test_running_install_twice_leaves_identical_content(self):
+        self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
+        rule_path = os.path.join(self.target, ".agents", "rules", "context-guard.md")
+        with open(rule_path, "r", encoding="utf-8") as f:
+            first = f.read()
+
+        res = self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+        with open(rule_path, "r", encoding="utf-8") as f:
+            second = f.read()
+        self.assertEqual(first, second)
 
 
 class TestInstallSh(unittest.TestCase):

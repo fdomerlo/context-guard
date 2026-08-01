@@ -5,14 +5,12 @@ set -euo pipefail
 # Context Guard: adapter installer (Claude Code / OpenCode / Antigravity)
 # ============================================================================
 # Pass the target project as the first argument, default is the current
-# directory. Claude Code and OpenCode install per-project. Antigravity still
-# installs per-user (see adapters/antigravity/PERMISSIONS.md) until its own
-# per-project migration lands.
+# directory. All three hosts install per-project.
 
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "Usage: ./install.sh [target-project-dir]"
-    echo "Installs the context-guard adapters for Claude Code and OpenCode"
-    echo "(both per-project), and Antigravity (per-user)."
+    echo "Installs the context-guard adapters for Claude Code, OpenCode, and"
+    echo "Antigravity, all per-project."
     exit 0
 fi
 
@@ -114,17 +112,15 @@ else
     echo "  -> OpenCode: no ~/.config/opencode found, skipped (pass FORCE_OPENCODE=1 to install anyway)"
 fi
 
-# 3. Antigravity: inject the bootstrap block into GEMINI.md, per user
-GEMINI_FILE="$HOME/.gemini/GEMINI.md"
+# 3. Antigravity: install the rule file into the target project. The old
+# approach injected the bootstrap block into the global ~/.gemini/GEMINI.md,
+# which contaminated every project the user has with a control meant to
+# apply to this one. The workspace rule file is read by IDE, CLI, and
+# Manager alike, and travels with the repo instead of the user's machine.
 if [[ -d "$HOME/.gemini" || "${FORCE_ANTIGRAVITY:-}" == "1" ]]; then
-    mkdir -p "$(dirname "$GEMINI_FILE")"
-    touch "$GEMINI_FILE"
-    sed -i.bak "/<!-- context-guard:begin -->/,/<!-- context-guard:end -->/d" "$GEMINI_FILE" && rm -f "$GEMINI_FILE.bak"
-    {
-        echo
-        cat "$SCRIPT_DIR/antigravity/bootstrap.snippet.md"
-    } >> "$GEMINI_FILE"
-    echo "  -> Antigravity: bootstrap block injected into $GEMINI_FILE"
+    mkdir -p "$TARGET_DIR/.agents/rules"
+    cp "$SCRIPT_DIR/antigravity/rules/context-guard.md" "$TARGET_DIR/.agents/rules/context-guard.md"
+    echo "  -> Antigravity: rule installed at .agents/rules/context-guard.md"
     echo "     (permission setup, unverified against a real host: adapters/antigravity/PERMISSIONS.md)"
 else
     echo "  -> Antigravity: no ~/.gemini found, skipped (pass FORCE_ANTIGRAVITY=1 to install anyway)"
