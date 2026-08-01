@@ -1,4 +1,4 @@
-"""Tests for cmd_next_task and cmd_status — new P1 commands."""
+"""Tests for cmd_next_task and cmd_status."""
 
 import os
 import sys

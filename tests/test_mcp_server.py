@@ -1,4 +1,4 @@
-"""Unit tests for Context Guard MCP server (scripts/mcp_server.py)."""
+"""Unit tests for Context Guard MCP server (context_guard/mcp_server.py)."""
 
 import os
 import sys
