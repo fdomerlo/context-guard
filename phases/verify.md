@@ -90,7 +90,7 @@ If the verdict is APPROVED or APPROVED WITH WARNINGS:
 
 ### Step 8: ARCHIVE — close out the change
 
-This runs automatically after an APPROVED verdict, in the same `/continue`
+This runs automatically after an APPROVED verdict, in the same `/cg-continue`
 invocation that ran VERIFY. There is no separate manual archive command for
 this path.
 
@@ -114,7 +114,7 @@ this path.
    **Archived at**: .context-guard/changes/archive/{change-name}/
 
    The change has been planned, implemented, verified, and archived.
-   Ready for the next `/new`.
+   Ready for the next `/cg-new`.
    ```
 
 ## Rules

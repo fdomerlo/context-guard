@@ -123,8 +123,7 @@ cg commit --context <path> --change <change-name> --next-phase EXECUTE
 
 This advances `lock_phase` to `EXECUTE`, releases the phase lock, and
 auto-generates a checkpoint of the DAG state. Report to the user that PLAN is
-locked and EXECUTE is open, with the suggested next command: `/execute` or
-`/continue`.
+locked and EXECUTE is open, with the suggested next command: `/cg-continue`.
 
 ## Rules
 

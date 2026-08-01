@@ -27,12 +27,16 @@ class TestClaudeCodeAdapter(unittest.TestCase):
             return f.read()
 
     def test_new_and_continue_commands_exist(self):
-        for name in ("new.md", "continue.md"):
+        # F6 6.0.7: unified across hosts as /cg-new and /cg-continue — Claude
+        # Code's old /new and /continue collided conceptually with nothing,
+        # but OpenCode's per-phase commands (/plan, /execute, /verify) did
+        # not match, and "plan" collides with OpenCode's own built-in agent.
+        for name in ("cg-new.md", "cg-continue.md"):
             self._read(os.path.join("commands", name))
 
     def test_commands_stay_thin(self):
         # PLAN.md 0.7: "10-20 líneas cada uno" — thin pointers, not duplicated prose.
-        for name in ("new.md", "continue.md"):
+        for name in ("cg-new.md", "cg-continue.md"):
             text = self._read(os.path.join("commands", name))
             line_count = len(text.splitlines())
             self.assertLessEqual(
@@ -41,14 +45,14 @@ class TestClaudeCodeAdapter(unittest.TestCase):
             )
 
     def test_commands_point_at_phases_not_duplicate_them(self):
-        new_text = self._read(os.path.join("commands", "new.md"))
+        new_text = self._read(os.path.join("commands", "cg-new.md"))
         self.assertIn("phases/plan.md", new_text)
-        continue_text = self._read(os.path.join("commands", "continue.md"))
+        continue_text = self._read(os.path.join("commands", "cg-continue.md"))
         for phase_file in ("phases/plan.md", "phases/execute.md", "phases/verify.md"):
             self.assertIn(phase_file, continue_text)
 
     def test_new_command_uses_cg_new(self):
-        text = self._read(os.path.join("commands", "new.md"))
+        text = self._read(os.path.join("commands", "cg-new.md"))
         self.assertIn("cg new", text)
 
     def test_settings_snippet_puts_approve_on_ask_list(self):
@@ -70,7 +74,7 @@ class TestClaudeCodeAdapter(unittest.TestCase):
         self.assertIn("Edit(.context-guard/**/manifest.json)", deny_list)
 
     def test_no_dead_references(self):
-        for name in ("commands/new.md", "commands/continue.md"):
+        for name in ("commands/cg-new.md", "commands/cg-continue.md"):
             text = self._read(name).lower()
             for term in DEAD_TERMS:
                 self.assertNotIn(term, text, f"{name} references dead state-guard machinery: {term}")
@@ -140,6 +144,29 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
                 for pattern, mode in bash_rules.items()),
             "opencode/permissions.snippet.json must ask before running cg approve",
         )
+
+
+class TestNoStaleSlashCommandReferences(unittest.TestCase):
+    """F6 6.0.7: renaming /new -> /cg-new and /continue -> /cg-continue is
+    only a fix if nothing else in the repo still points at the old names —
+    a doc telling the agent to run a command that no longer exists is worse
+    than no doc at all."""
+
+    STALE_PATTERNS = ("`/new`", "`/continue`", "commands/new.md", "commands/continue.md")
+
+    FILES = (
+        os.path.join(REPO_ROOT, "phases", "plan.md"),
+        os.path.join(REPO_ROOT, "phases", "verify.md"),
+        os.path.join(ADAPTERS_DIR, "claude-code", "PERMISSIONS.md"),
+    )
+
+    def test_no_file_references_the_old_command_names(self):
+        for path in self.FILES:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+            for pattern in self.STALE_PATTERNS:
+                with self.subTest(file=path, pattern=pattern):
+                    self.assertNotIn(pattern, text)
 
 
 class TestOpenCodePermissionParity(unittest.TestCase):

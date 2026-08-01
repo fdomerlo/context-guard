@@ -54,5 +54,5 @@ If you deny, the agent stays in PLAN — `commit` returns exit 6
 
 ## Verified
 
-Verified against Claude Code by running a full `/new` → approve → `/continue`
-cycle in a toy project.
+Verified against Claude Code by running a full `/cg-new` → approve →
+`/cg-continue` cycle in a toy project.
