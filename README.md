@@ -1,5 +1,7 @@
 # Context Guard
 
+[![CI](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml)
+
 **The transactional memory layer for AI coding agents — your context survives crashes, compaction, and session loss.**
 
 *[Leer en español](README.es.md)*

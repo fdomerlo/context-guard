@@ -62,6 +62,16 @@ class TestPitchAndLanguage(ReadmeTestCase):
     def test_links_to_the_spanish_mirror(self):
         self.assertIn("README.es.md", self.text)
 
+    def test_ci_badge_points_at_the_real_workflow(self):
+        """PLAN.md F7: only the CI badge, verifiable right now via GitHub
+        Actions — no PyPI version badge until the package is actually
+        published, or it would 404/show nothing the day someone clicks it."""
+        self.assertIn(
+            "github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg",
+            self.text,
+        )
+        self.assertNotIn("img.shields.io/pypi", self.text)
+
 
 class TestExitCodeTable(ReadmeTestCase):
     """The exact bug this phase exists to catch: the old table described

@@ -1,5 +1,7 @@
 # Context Guard
 
+[![CI](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/fdomerlo/context-guard/actions/workflows/ci.yml)
+
 **La capa de memoria transaccional para agentes de codificación con IA — tu contexto sobrevive a crashes, compactación y pérdida de sesión.**
 
 *[Read in English](README.md)*
