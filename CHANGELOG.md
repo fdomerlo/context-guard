@@ -42,7 +42,11 @@ is retired; its repository now points here.
   executed, and locked independently in the same project.
 - New commands: `cg new <name>`, `cg list`, `cg archive --change <name>`.
 - `cg migrate` converts both legacy layouts (state-guard's `state.ini` and
-  context-guard 1.x's flat directory) in place, idempotently.
+  context-guard 1.x's flat directory) in place, idempotently. A 1.x layout's
+  own `archive/` subdirectories are copied into `changes/archive/` too, not
+  just its live changes. Phases state-guard tracked that this pipeline does
+  not recognise (a `hotfix` bypass state, for example) land in a
+  `legacy_phases` field instead of silently corrupting `completed_phases`.
 - Every command accepts `--change`; with several changes active and no flag,
   commands report the ambiguity and name them — never guess the first one
   alphabetically, the bug both predecessor repos shipped with.
@@ -79,9 +83,25 @@ is retired; its repository now points here.
 - `phases/{plan,execute,verify}.md`, ported from state-guard, translated to
   English, trimmed, and integrated with `[PENDING]` and `cg approve`.
 - Thin per-harness adapters in `adapters/{claude-code,opencode,antigravity}/`
-  plus `install.sh`. Each documents its own permission configuration for
-  `cg approve` in `PERMISSIONS.md`; OpenCode and Antigravity are marked
-  unverified — ported but never run against a real host.
+  plus `install.sh`, all installing per-project now — OpenCode and
+  Antigravity used to write into `$HOME` (a stale absolute path to the repo
+  clone for OpenCode's generated commands, a global `~/.gemini/GEMINI.md`
+  injection for Antigravity that contaminated every project on the machine).
+  Nine confirmed bugs closed in the pass: the deprecated OpenCode `tools`
+  key, a missing manifest-edit `deny` on both OpenCode and Claude Code,
+  inconsistent command names across hosts (unified on `/cg-new` /
+  `/cg-continue`), a missing Antigravity deny hook on `run_command`, and no
+  MCP server registration anywhere.
+- `install.sh` gains `--host claude|opencode|antigravity|all`, `--with-mcp`
+  (registers `context-guard-mcp` per host; optional, every adapter works
+  without it), and `--with-antigravity-hook` (opt-in, touches user config).
+  Every config merge is idempotent and preserves what was already there;
+  the installer prints the exact list of files it touched.
+- Each adapter documents its own permission configuration for `cg approve`
+  in `PERMISSIONS.md`; OpenCode and Antigravity are marked unverified —
+  rewritten and covered by tests that actually run `install.sh`, but never
+  driven through a real host session. `adapters/VERIFY.md` is the manual
+  checklist for closing that gap.
 - `AGENTS.md` rewritten to under 100 lines as the single contract an agent
   loads.
 
@@ -97,6 +117,13 @@ is retired; its repository now points here.
 - `requires-python = ">=3.10"`, tested in CI across 3.10–3.13.
 - `cg` ships as a short entry point alongside `context-guard`.
 - MIT license added.
+- `requirements.txt` removed — it carried `mcp>=1.0.0` with no upper bound,
+  the exact drift fixed in `pyproject.toml`, and nothing in the repo
+  consumed it. `pyproject.toml` is the single source of truth.
+- `.claude/` excluded from the sdist after a `uv build` dry run showed it
+  bundling `.claude/settings.local.json` — untracked, ignored by this
+  machine's global gitignore rather than the repo's own, carrying absolute
+  local paths.
 
 ---
 
