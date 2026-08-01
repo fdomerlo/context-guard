@@ -5,6 +5,10 @@
 
 **The transactional memory layer for AI coding agents — your context survives crashes, compaction, and session loss.**
 
+*[Leer en español](README.es.md)*
+
+*[Aqui un tutorial (también en español) para usuarios no técnicos y novatos](TUTORIAL.es.md)*
+
 ---
 
 ## The problem
