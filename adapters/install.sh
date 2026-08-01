@@ -63,14 +63,16 @@ echo "     (what that prompt does and does not guarantee: adapters/claude-code/P
 OPENCODE_CFG="$HOME/.config/opencode/opencode.jsonc"
 if [[ -d "$HOME/.config/opencode" || "${FORCE_OPENCODE:-}" == "1" ]]; then
     mkdir -p "$(dirname "$OPENCODE_CFG")" "$HOME/.config/opencode/commands"
-    python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/agent.snippet.json" <<'PY'
+    python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/agent.snippet.json" "$SCRIPT_DIR/opencode/permissions.snippet.json" <<'PY'
 import json
 import re
 import sys
 
-config_path, snippet_path = sys.argv[1], sys.argv[2]
-with open(snippet_path, "r", encoding="utf-8") as f:
+config_path, agent_snippet_path, permissions_snippet_path = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(agent_snippet_path, "r", encoding="utf-8") as f:
     agent_snippet = json.load(f)
+with open(permissions_snippet_path, "r", encoding="utf-8") as f:
+    permissions_snippet = json.load(f)
 
 try:
     with open(config_path, "r", encoding="utf-8") as f:
@@ -80,6 +82,16 @@ except (FileNotFoundError, json.JSONDecodeError):
     cfg = {"$schema": "https://opencode.ai/config.json", "agent": {}}
 
 cfg.setdefault("agent", {}).update(agent_snippet)
+
+# Top-level "permission", not nested in the agent entry, so it applies
+# regardless of which agent is running the command. Merged per-pattern so a
+# pre-existing rule for a pattern we do not know about survives untouched,
+# and re-running the installer never duplicates anything.
+perm_cfg = cfg.setdefault("permission", {})
+for category, rules in permissions_snippet.get("permission", {}).items():
+    category_cfg = perm_cfg.setdefault(category, {})
+    for pattern, mode in rules.items():
+        category_cfg.setdefault(pattern, mode)
 
 with open(config_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)

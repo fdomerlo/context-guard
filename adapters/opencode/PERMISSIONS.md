@@ -13,27 +13,32 @@ see PLAN.md 0.6.
 
 ## Snippet
 
-`agent.snippet.json` declares the permission alongside the agent, so
-`adapters/install.sh` installs both together into
-`~/.config/opencode/opencode.jsonc`:
+`permissions.snippet.json` declares the permission at the top level of
+`opencode.json`/`opencode.jsonc` — not nested inside the agent entry, so it
+is not tied to the `context-guard` agent being the one running the command:
 
 ```json
 {
-  "agent": {
-    "context-guard": {
-      "permission": {
-        "bash": {
-          "cg approve*": "ask",
-          "context-guard approve*": "ask"
-        }
-      }
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "cg approve*": "ask",
+      "context-guard approve*": "ask"
+    },
+    "edit": {
+      ".context-guard/**/manifest.json": "deny"
     }
   }
 }
 ```
 
+`adapters/install.sh` merges this alongside `agent.snippet.json` into the
+target project's `opencode.json` (or `opencode.jsonc`).
+
 Both spellings are listed because the package installs two entrypoints; an
 allowlist that only names the short one is sidestepped by using the long one.
+The `edit` deny closes the other vector: editing `manifest.json` by hand
+bypasses the whole transaction protocol without ever running `cg approve`.
 
 If your OpenCode version does not honour per-pattern bash rules, fall back to
 asking for every bash invocation (`"bash": "ask"`) or run the agent in a mode

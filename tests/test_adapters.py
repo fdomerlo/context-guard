@@ -4,7 +4,11 @@ install.sh which wires them into a target project."""
 
 import json
 import os
+import shutil
 import stat
+import subprocess
+import sys
+import tempfile
 import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -115,16 +119,124 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
         self.assertIn("Bash(cg approve*)", text)
 
     def test_opencode_snippet_declares_the_permission(self):
-        path = os.path.join(ADAPTERS_DIR, "opencode", "agent.snippet.json")
+        # F6 6.1: permission lives in the top-level permissions.snippet.json,
+        # not duplicated inside the agent entry — one source of truth instead
+        # of two files that can drift apart.
+        path = os.path.join(ADAPTERS_DIR, "opencode", "permissions.snippet.json")
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        agent = data["context-guard"]
-        permission = agent.get("permission", {})
-        bash_rules = permission.get("bash", {})
+        bash_rules = data.get("permission", {}).get("bash", {})
         self.assertTrue(
             any("approve" in pattern and mode == "ask"
                 for pattern, mode in bash_rules.items()),
-            "opencode/agent.snippet.json must ask before running cg approve",
+            "opencode/permissions.snippet.json must ask before running cg approve",
+        )
+
+
+class TestOpenCodePermissionParity(unittest.TestCase):
+    """F6 6.0.2/6.0.3: agent.snippet.json's `"tools"` block is deprecated
+    since OpenCode v1.1.1 (merged into `permission`), and OpenCode never
+    received the manifest-edit deny Claude Code has — the third enforcement
+    layer (0.6) simply did not exist for this host."""
+
+    def _agent_snippet(self):
+        path = os.path.join(ADAPTERS_DIR, "opencode", "agent.snippet.json")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _permissions_snippet(self):
+        path = os.path.join(ADAPTERS_DIR, "opencode", "permissions.snippet.json")
+        self.assertTrue(os.path.exists(path), "adapters/opencode/permissions.snippet.json is missing")
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_agent_snippet_has_no_deprecated_tools_key(self):
+        agent = self._agent_snippet()["context-guard"]
+        self.assertNotIn(
+            "tools", agent,
+            "\"tools\" was folded into \"permission\" as of OpenCode v1.1.1",
+        )
+
+    def test_agent_snippet_does_not_duplicate_the_permission_block(self):
+        """Permission now lives once, in permissions.snippet.json — keeping a
+        second copy inside the agent entry is exactly the kind of duplication
+        that lets the two silently drift apart."""
+        agent = self._agent_snippet()["context-guard"]
+        self.assertNotIn("permission", agent)
+
+    def test_permissions_snippet_denies_manifest_edits(self):
+        data = self._permissions_snippet()
+        edit_rules = data.get("permission", {}).get("edit", {})
+        self.assertEqual(
+            edit_rules.get(".context-guard/**/manifest.json"), "deny",
+            "OpenCode never got the manifest-edit deny Claude Code has — "
+            "closing that vector is the parity fix in F6",
+        )
+
+    def test_permissions_snippet_is_valid_opencode_config_shape(self):
+        data = self._permissions_snippet()
+        self.assertIn("$schema", data)
+        self.assertIn("permission", data)
+
+
+@unittest.skipUnless(shutil.which("bash"), "bash is required to run install.sh")
+class InstallShRunCase(unittest.TestCase):
+    """Base for tests that run install.sh for real against an isolated fake
+    HOME and target project, rather than only inspecting its source. F6's
+    bugs are behavioral (files landing in the wrong place, absolute paths
+    leaking into generated content) — a source-text check cannot catch
+    those, only actually running the script can."""
+
+    def setUp(self):
+        self.target = tempfile.mkdtemp(prefix="guard_install_target_")
+        self.home = tempfile.mkdtemp(prefix="guard_install_home_")
+
+    def tearDown(self):
+        shutil.rmtree(self.target, ignore_errors=True)
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def run_install(self, *args, env_overrides=None):
+        env = dict(os.environ)
+        env["HOME"] = self.home
+        if env_overrides:
+            env.update(env_overrides)
+        return subprocess.run(
+            ["bash", INSTALL_SH, self.target, *args],
+            env=env, capture_output=True, text=True,
+        )
+
+
+class TestOpenCodePermissionsAreInstalled(InstallShRunCase):
+    def test_permissions_snippet_is_merged_into_the_opencode_config(self):
+        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        cfg_path = os.path.join(self.home, ".config", "opencode", "opencode.jsonc")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+
+        self.assertEqual(
+            cfg.get("permission", {}).get("edit", {}).get(".context-guard/**/manifest.json"),
+            "deny",
+        )
+        self.assertNotIn(
+            "tools", cfg.get("agent", {}).get("context-guard", {}),
+            "the deprecated tools key must not be installed into the target config",
+        )
+
+    def test_running_install_twice_does_not_duplicate_permission_entries(self):
+        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+        cfg_path = os.path.join(self.home, ".config", "opencode", "opencode.jsonc")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        # A dict merge is duplicate-proof by construction; this pins that a
+        # future rewrite of the merge does not regress to a list-append that
+        # would grow unboundedly across reinstalls.
+        self.assertEqual(
+            cfg["permission"]["bash"]["cg approve*"], "ask",
         )
 
 
