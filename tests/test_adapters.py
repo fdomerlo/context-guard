@@ -13,10 +13,14 @@ import tempfile
 import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ADAPTERS_DIR = os.path.join(REPO_ROOT, "adapters")
-CLAUDE_CODE_DIR = os.path.join(ADAPTERS_DIR, "claude-code")
-OPENCODE_DIR = os.path.join(ADAPTERS_DIR, "opencode")
-INSTALL_SH = os.path.join(ADAPTERS_DIR, "install.sh")
+# PLAN-2.1 F1 split what used to live under adapters/ in two: the installable
+# artifacts became package data, the human-facing docs became documentation.
+# Only install.sh stayed behind, until F2 deletes it.
+HOSTS_DIR = os.path.join(REPO_ROOT, "context_guard", "_data", "hosts")
+DOCS_DIR = os.path.join(REPO_ROOT, "docs", "adapters")
+CLAUDE_CODE_DIR = os.path.join(HOSTS_DIR, "claude-code")
+OPENCODE_DIR = os.path.join(HOSTS_DIR, "opencode")
+INSTALL_SH = os.path.join(REPO_ROOT, "adapters", "install.sh")
 ABS_PATH_RE = re.compile(r"/home/|/Users/")
 
 DEAD_TERMS = ("watchdog", "hook_daemon", "/dev/tty", "sha-256", "sha256")
@@ -25,7 +29,7 @@ DEAD_TERMS = ("watchdog", "hook_daemon", "/dev/tty", "sha-256", "sha256")
 class TestClaudeCodeAdapter(unittest.TestCase):
     def _read(self, relpath):
         path = os.path.join(CLAUDE_CODE_DIR, relpath)
-        self.assertTrue(os.path.exists(path), f"adapters/claude-code/{relpath} is missing")
+        self.assertTrue(os.path.exists(path), f"_data/hosts/claude-code/{relpath} is missing")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -93,10 +97,10 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
     HOSTS = ("claude-code", "opencode", "antigravity")
 
     def _permissions_doc(self, host):
-        path = os.path.join(ADAPTERS_DIR, host, "PERMISSIONS.md")
+        path = os.path.join(DOCS_DIR, host, "PERMISSIONS.md")
         self.assertTrue(
             os.path.exists(path),
-            f"adapters/{host}/PERMISSIONS.md is missing — each harness must "
+            f"docs/adapters/{host}/PERMISSIONS.md is missing — each harness must "
             "document how to put cg approve behind a human confirmation",
         )
         with open(path, "r", encoding="utf-8") as f:
@@ -105,7 +109,7 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
     def test_every_host_documents_how_to_gate_approve(self):
         for host in self.HOSTS:
             text = self._permissions_doc(host)
-            self.assertIn("cg approve", text, f"adapters/{host}/PERMISSIONS.md must name the command")
+            self.assertIn("cg approve", text, f"docs/adapters/{host}/PERMISSIONS.md must name the command")
 
     def test_docs_are_honest_about_what_the_prompt_guarantees(self):
         """0.6 requires each layer to be honest about what it guarantees. An
@@ -115,7 +119,7 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
             text = self._permissions_doc(host).lower()
             self.assertTrue(
                 "cooperative" in text,
-                f"adapters/{host}/PERMISSIONS.md must say what is cooperative "
+                f"docs/adapters/{host}/PERMISSIONS.md must say what is cooperative "
                 "and what is hard (PLAN.md 0.6)",
             )
 
@@ -138,14 +142,14 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
         # F6 6.1: permission lives in the top-level permissions.snippet.json,
         # not duplicated inside the agent entry — one source of truth instead
         # of two files that can drift apart.
-        path = os.path.join(ADAPTERS_DIR, "opencode", "permissions.snippet.json")
+        path = os.path.join(OPENCODE_DIR, "permissions.snippet.json")
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         bash_rules = data.get("permission", {}).get("bash", {})
         self.assertTrue(
             any("approve" in pattern and mode == "ask"
                 for pattern, mode in bash_rules.items()),
-            "opencode/permissions.snippet.json must ask before running cg approve",
+            "_data/hosts/opencode/permissions.snippet.json must ask before running cg approve",
         )
 
 
@@ -156,7 +160,7 @@ class TestOpenCodeAdapterIsPerProject(unittest.TestCase):
 
     def _read(self, relpath):
         path = os.path.join(OPENCODE_DIR, relpath)
-        self.assertTrue(os.path.exists(path), f"adapters/opencode/{relpath} is missing")
+        self.assertTrue(os.path.exists(path), f"_data/hosts/opencode/{relpath} is missing")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -209,11 +213,11 @@ class TestAntigravityAdapterIsPerProject(unittest.TestCase):
     contaminated all of them. The correct, IDE+CLI+Manager-supported location
     is the workspace rule file, which travels with the repo."""
 
-    RULE_PATH = os.path.join(ADAPTERS_DIR, "antigravity", "rules", "context-guard.md")
-    OLD_SNIPPET_PATH = os.path.join(ADAPTERS_DIR, "antigravity", "bootstrap.snippet.md")
+    RULE_PATH = os.path.join(HOSTS_DIR, "antigravity", "rules", "context-guard.md")
+    OLD_SNIPPET_PATH = os.path.join(HOSTS_DIR, "antigravity", "bootstrap.snippet.md")
 
     def test_rule_file_exists_at_the_new_location(self):
-        self.assertTrue(os.path.exists(self.RULE_PATH), "adapters/antigravity/rules/context-guard.md is missing")
+        self.assertTrue(os.path.exists(self.RULE_PATH), "_data/hosts/antigravity/rules/context-guard.md is missing")
         with open(self.RULE_PATH, "r", encoding="utf-8") as f:
             text = f.read()
         self.assertIn("cg approve", text)
@@ -224,7 +228,7 @@ class TestAntigravityAdapterIsPerProject(unittest.TestCase):
         drift from the one install.sh actually uses."""
         self.assertFalse(
             os.path.exists(self.OLD_SNIPPET_PATH),
-            "adapters/antigravity/bootstrap.snippet.md should be replaced by rules/context-guard.md, not kept alongside it",
+            "a bootstrap.snippet.md should be replaced by rules/context-guard.md, not kept alongside it",
         )
 
 
@@ -233,14 +237,14 @@ class TestAntigravityHookSnippet(unittest.TestCase):
     the equivalent, and stronger, of Claude Code's ask list. Optional
     hardening (PLAN.md 6.1) since it touches user config, not project."""
 
-    PATH = os.path.join(ADAPTERS_DIR, "antigravity", "hooks.snippet.json")
+    PATH = os.path.join(HOSTS_DIR, "antigravity", "hooks.snippet.json")
 
     def _snippet(self):
         with open(self.PATH, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def test_snippet_exists_and_is_valid_json(self):
-        self.assertTrue(os.path.exists(self.PATH), "adapters/antigravity/hooks.snippet.json is missing")
+        self.assertTrue(os.path.exists(self.PATH), "_data/hosts/antigravity/hooks.snippet.json is missing")
         self._snippet()
 
     def test_declares_a_pre_tool_use_hook_on_run_command(self):
@@ -264,7 +268,7 @@ class TestAntigravityHookSnippet(unittest.TestCase):
         self.assertIn("human-only", action["message"])
 
     def test_permissions_doc_mentions_the_opt_in_hook(self):
-        path = os.path.join(ADAPTERS_DIR, "antigravity", "PERMISSIONS.md")
+        path = os.path.join(DOCS_DIR, "antigravity", "PERMISSIONS.md")
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
         self.assertIn("hooks.snippet.json", text)
@@ -292,7 +296,7 @@ class TestMcpRegistrationSnippets(unittest.TestCase):
         """PLAN.md 6.1: not automated in 2.0 — a short manual instruction is
         enough, since the CLI's MCP config lives in user/plugin config this
         installer does not touch."""
-        path = os.path.join(ADAPTERS_DIR, "antigravity", "PERMISSIONS.md")
+        path = os.path.join(DOCS_DIR, "antigravity", "PERMISSIONS.md")
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
         self.assertIn("context-guard-mcp", text)
@@ -316,9 +320,9 @@ class TestNoStaleSlashCommandReferences(unittest.TestCase):
     STALE_PATTERNS = ("`/new`", "`/continue`", "commands/new.md", "commands/continue.md")
 
     FILES = (
-        os.path.join(REPO_ROOT, "phases", "plan.md"),
-        os.path.join(REPO_ROOT, "phases", "verify.md"),
-        os.path.join(ADAPTERS_DIR, "claude-code", "PERMISSIONS.md"),
+        os.path.join(REPO_ROOT, "context_guard", "_data", "phases", "plan.md"),
+        os.path.join(REPO_ROOT, "context_guard", "_data", "phases", "verify.md"),
+        os.path.join(DOCS_DIR, "claude-code", "PERMISSIONS.md"),
     )
 
     def test_no_file_references_the_old_command_names(self):
@@ -337,13 +341,13 @@ class TestOpenCodePermissionParity(unittest.TestCase):
     layer (0.6) simply did not exist for this host."""
 
     def _agent_snippet(self):
-        path = os.path.join(ADAPTERS_DIR, "opencode", "agent.snippet.json")
+        path = os.path.join(OPENCODE_DIR, "agent.snippet.json")
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def _permissions_snippet(self):
-        path = os.path.join(ADAPTERS_DIR, "opencode", "permissions.snippet.json")
-        self.assertTrue(os.path.exists(path), "adapters/opencode/permissions.snippet.json is missing")
+        path = os.path.join(OPENCODE_DIR, "permissions.snippet.json")
+        self.assertTrue(os.path.exists(path), "_data/hosts/opencode/permissions.snippet.json is missing")
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
@@ -817,10 +821,10 @@ class TestVerifyChecklist(unittest.TestCase):
     checklist, since none of the adapters' real host interaction (menus,
     permission prompts) can be observed from a subprocess test."""
 
-    PATH = os.path.join(ADAPTERS_DIR, "VERIFY.md")
+    PATH = os.path.join(DOCS_DIR, "VERIFY.md")
 
     def setUp(self):
-        self.assertTrue(os.path.exists(self.PATH), "adapters/VERIFY.md is missing")
+        self.assertTrue(os.path.exists(self.PATH), "docs/adapters/VERIFY.md is missing")
         with open(self.PATH, "r", encoding="utf-8") as f:
             self.text = f.read()
 

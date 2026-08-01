@@ -145,7 +145,8 @@ visto bueno que `commit --next-phase EXECUTE` exige — pero el comando en sí
 es tan cooperativo como el resto: un agente con shell puede correr
 `cg approve` él mismo, y nada en `cg` lo impide. El control duro real no
 vive en `cg` en absoluto — vive en el permission prompt de tu harness sobre
-el comando `cg approve`, configurado por host en `adapters/*/PERMISSIONS.md`.
+el comando `cg approve`, configurado por host en
+`docs/adapters/*/PERMISSIONS.md`.
 Ese prompt corre afuera del proceso del agente, que es el único lugar donde
 puede vivir un control que no depende de la cooperación del agente.
 `approve` deliberadamente no está expuesto como tool de MCP, por la misma
@@ -238,10 +239,13 @@ fase completada o una transacción abierta). Activalo una vez por clon con
 
 ## Adapters y configuración de permisos
 
-En `adapters/{claude-code,opencode,antigravity}/` viven wrappers finos por
-harness — cada uno apunta a `phases/{plan,execute,verify}.md` en vez de
-duplicarlos, y trae un `PERMISSIONS.md` que documenta exactamente cómo poner
-`cg approve` detrás del permission prompt de ese harness.
+Dentro del paquete, en `context_guard/_data/hosts/{claude-code,opencode,
+antigravity}/`, viven wrappers finos por harness — cada uno apunta a
+`phases/{plan,execute,verify}.md` en vez de duplicarlos. Cómo poner
+`cg approve` detrás del permission prompt de cada harness está documentado en
+[docs/adapters/](docs/adapters/), un `PERMISSIONS.md` por host, junto con el
+checklist de smoke-test manual en
+[docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
 `adapters/install.sh` instala el que corresponde al host detectado. Los
 adapters de OpenCode y Antigravity están portados de state-guard y cubiertos
 solo por tests estáticos — no se corrieron contra un host real de ninguno de

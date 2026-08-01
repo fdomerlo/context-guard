@@ -148,7 +148,7 @@ command itself is just as cooperative as the rest: an agent with a shell can
 run `cg approve` itself, and nothing in `cg` prevents that. The actual hard
 control does not live in `cg` at all — it is your harness's permission
 prompt on the `cg approve` command, configured per host in
-`adapters/*/PERMISSIONS.md`. That prompt runs outside the agent's process,
+`docs/adapters/*/PERMISSIONS.md`. That prompt runs outside the agent's process,
 which is the only place a control that does not depend on the agent's
 cooperation can live. `approve` is deliberately not exposed as an MCP tool,
 for the same reason: an MCP tool is a channel the permission prompt does not
@@ -239,11 +239,13 @@ an open transaction). Activate it once per clone with
 
 ## Adapters and permission configuration
 
-Thin, per-harness wrappers live in `adapters/{claude-code,opencode,
-antigravity}/` — each points at `phases/{plan,execute,verify}.md` rather than
-duplicating them, and ships a `PERMISSIONS.md` documenting exactly how to put
-`cg approve` behind that harness's permission prompt. `adapters/install.sh`
-installs the right one for the detected host. The OpenCode and Antigravity
+Thin, per-harness wrappers ship inside the package under
+`context_guard/_data/hosts/{claude-code,opencode,antigravity}/` — each points
+at `phases/{plan,execute,verify}.md` rather than duplicating them. How to put
+`cg approve` behind each harness's permission prompt is documented in
+[docs/adapters/](docs/adapters/), one `PERMISSIONS.md` per host, alongside the
+manual smoke-test checklist in [docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
+`adapters/install.sh` installs the right one for the detected host. The OpenCode and Antigravity
 adapters are ported from state-guard and covered by static tests only — they
 have not been run against a live host of either.
 

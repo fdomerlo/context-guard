@@ -7,7 +7,9 @@ import os
 import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PHASES_DIR = os.path.join(REPO_ROOT, "phases")
+# PLAN-2.1 F1: the phase documents are package data now, not a repo
+# directory. What they must contain did not change with the move.
+PHASES_DIR = os.path.join(REPO_ROOT, "context_guard", "_data", "phases")
 
 SPANISH_INDICATORS = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
 
@@ -32,7 +34,7 @@ PHASE_FILES = {
 class TestPhaseDocs(unittest.TestCase):
     def _read(self, name):
         path = os.path.join(PHASES_DIR, name)
-        self.assertTrue(os.path.exists(path), f"phases/{name} is missing")
+        self.assertTrue(os.path.exists(path), f"_data/phases/{name} is missing")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -40,7 +42,7 @@ class TestPhaseDocs(unittest.TestCase):
         for name in PHASE_FILES:
             self.assertTrue(
                 os.path.exists(os.path.join(PHASES_DIR, name)),
-                f"phases/{name} is missing",
+                f"_data/phases/{name} is missing",
             )
 
     def test_phases_are_english(self):
@@ -48,7 +50,7 @@ class TestPhaseDocs(unittest.TestCase):
             text = self._read(name)
             spanish_count = sum(text.lower().count(c) for c in SPANISH_INDICATORS)
             self.assertLessEqual(
-                spanish_count, 5, f"phases/{name} must be in English (PLAN.md 0.2)"
+                spanish_count, 5, f"_data/phases/{name} must be in English (PLAN.md 0.2)"
             )
 
     def test_phases_are_within_size_band(self):
@@ -57,8 +59,8 @@ class TestPhaseDocs(unittest.TestCase):
         for name in PHASE_FILES:
             text = self._read(name)
             size = len(text.encode("utf-8"))
-            self.assertGreaterEqual(size, 2000, f"phases/{name} is suspiciously thin ({size}B)")
-            self.assertLessEqual(size, 7000, f"phases/{name} exceeds the ~4-5KB budget ({size}B)")
+            self.assertGreaterEqual(size, 2000, f"_data/phases/{name} is suspiciously thin ({size}B)")
+            self.assertLessEqual(size, 7000, f"_data/phases/{name} exceeds the ~4-5KB budget ({size}B)")
 
     def test_phases_mention_pending_marker(self):
         # Only plan.md and verify.md gate on [PENDING] (transaction.py's
@@ -66,7 +68,7 @@ class TestPhaseDocs(unittest.TestCase):
         # such check, so requiring the marker there would be padding.
         for name in ("plan.md", "verify.md"):
             text = self._read(name)
-            self.assertIn("[PENDING]", text, f"phases/{name} must reference the [PENDING] marker")
+            self.assertIn("[PENDING]", text, f"_data/phases/{name} must reference the [PENDING] marker")
 
     def test_plan_references_cg_approve(self):
         text = self._read("plan.md")
@@ -78,7 +80,7 @@ class TestPhaseDocs(unittest.TestCase):
         for a chat confirmation and commit on it."""
         text = self._read("plan.md")
         for hedge in ("until it ships", "will turn this", "is the command that will"):
-            self.assertNotIn(hedge, text, f"phases/plan.md hedges about cg approve ('{hedge}')")
+            self.assertNotIn(hedge, text, f"_data/phases/plan.md hedges about cg approve ('{hedge}')")
 
     def test_plan_documents_the_approval_exit_code(self):
         self.assertIn("APPROVAL_REQUIRED", self._read("plan.md"))
@@ -88,7 +90,7 @@ class TestPhaseDocs(unittest.TestCase):
         for dead_term in ("/dev/tty", "sha-256", "plan-confirm", "plan-approve"):
             self.assertNotIn(
                 dead_term, text,
-                f"phases/plan.md still references the dead crypto gate ('{dead_term}'), "
+                f"_data/phases/plan.md still references the dead crypto gate ('{dead_term}'), "
                 "which PLAN.md 0.4 replaces with cg approve",
             )
 
@@ -98,7 +100,7 @@ class TestPhaseDocs(unittest.TestCase):
             for placeholder in SCAFFOLD_PLACEHOLDERS:
                 self.assertNotIn(
                     placeholder, text,
-                    f"phases/{name} duplicates a template transaction.py already scaffolds",
+                    f"_data/phases/{name} duplicates a template transaction.py already scaffolds",
                 )
 
     def test_phases_use_uppercase_phase_names(self):
@@ -106,13 +108,13 @@ class TestPhaseDocs(unittest.TestCase):
         # repo's DAG (transaction.py:TRANSITIONS) uses uppercase.
         for name, phase_name in PHASE_FILES.items():
             text = self._read(name)
-            self.assertIn(phase_name, text, f"phases/{name} should reference phase {phase_name}")
+            self.assertIn(phase_name, text, f"_data/phases/{name} should reference phase {phase_name}")
 
     def test_phases_do_not_reference_state_guard_paths(self):
         for name in PHASE_FILES:
             text = self._read(name)
-            self.assertNotIn(".state-guard/", text, f"phases/{name} still points at the old .state-guard/ layout")
-            self.assertNotIn("state_manager.py", text, f"phases/{name} still invokes state-guard's middleware directly")
+            self.assertNotIn(".state-guard/", text, f"_data/phases/{name} still points at the old .state-guard/ layout")
+            self.assertNotIn("state_manager.py", text, f"_data/phases/{name} still invokes state-guard's middleware directly")
 
     def test_verify_covers_archive_step(self):
         # PLAN.md 0.7: "archive = paso final de verify, como en state-guard"

@@ -22,7 +22,8 @@ shows active changes. `cg archive` moves a finished one to `changes/archive/`.
 
 ## Pipeline phases
 
-Full instructions for each phase live in `phases/{plan,execute,verify}.md` —
+Full instructions for each phase live in `.context-guard/phases/{plan,execute,
+verify}.md`, installed into the project from the package's embedded copy —
 load the file for the phase you are entering and follow it. Do not skip a
 phase; `commit` rejects any transition outside this table.
 
@@ -56,7 +57,7 @@ environment's `$USER`. The approval is spent by the
 commit it authorizes, so a new iteration of the plan needs a new one.
 `--hotfix` skips PLAN and opens EXECUTE directly; it requires a reason, which
 is persisted. The real control is your harness's permission prompt: put
-`cg approve` on the "ask" list (see `adapters/*/PERMISSIONS.md`) so a human
+`cg approve` on the "ask" list (see `docs/adapters/*/PERMISSIONS.md`) so a human
 confirms it out of band, not just in the conversation.
 
 ## Exit codes (schema v3)

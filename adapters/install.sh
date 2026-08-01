@@ -83,7 +83,12 @@ esac
 TARGET_DIR="$(cd "$TARGET_ARG" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-PHASES_SRC="$REPO_DIR/phases"
+# The artifacts moved into the package as data (PLAN-2.1 F1). This script is
+# the last consumer that still reads them off the repo tree; `cg setup` (F2)
+# replaces it and resolves them through importlib.resources instead.
+DATA_SRC="$REPO_DIR/context_guard/_data"
+PHASES_SRC="$DATA_SRC/phases"
+HOSTS_SRC="$DATA_SRC/hosts"
 
 # A host installs if it was named explicitly, or if --host all left
 # detection to decide. install_claude has no detection leg: Claude Code
@@ -113,9 +118,9 @@ echo "Installing context-guard adapters into $TARGET_DIR ..."
 # 1. Claude Code: slash commands + phases, per project
 if [[ "$install_claude" == "1" ]]; then
 mkdir -p "$TARGET_DIR/.claude/commands" "$TARGET_DIR/.context-guard/phases"
-cp "$SCRIPT_DIR/claude-code/commands/"*.md "$TARGET_DIR/.claude/commands/"
+cp "$HOSTS_SRC/claude-code/commands/"*.md "$TARGET_DIR/.claude/commands/"
 cp "$PHASES_SRC/"*.md "$TARGET_DIR/.context-guard/phases/"
-for f in "$SCRIPT_DIR/claude-code/commands/"*.md; do
+for f in "$HOSTS_SRC/claude-code/commands/"*.md; do
     record ".claude/commands/$(basename "$f")"
 done
 for f in "$PHASES_SRC/"*.md; do
@@ -123,7 +128,7 @@ for f in "$PHASES_SRC/"*.md; do
 done
 echo "  -> Claude Code: commands in .claude/commands/, phases in .context-guard/phases/"
 
-python3 - "$TARGET_DIR" "$SCRIPT_DIR/claude-code/settings.snippet.json" <<'PY'
+python3 - "$TARGET_DIR" "$HOSTS_SRC/claude-code/settings.snippet.json" <<'PY'
 import json
 import sys
 
@@ -157,10 +162,10 @@ with open(settings_path, "w", encoding="utf-8") as f:
 PY
 record ".claude/settings.json"
 echo "  -> Claude Code: cg approve added to the ask list in .claude/settings.json"
-echo "     (what that prompt does and does not guarantee: adapters/claude-code/PERMISSIONS.md)"
+echo "     (what that prompt does and does not guarantee: docs/adapters/claude-code/PERMISSIONS.md)"
 
 if [[ "$WITH_MCP" == "1" ]]; then
-    python3 - "$TARGET_DIR/.mcp.json" "$SCRIPT_DIR/claude-code/mcp.snippet.json" <<'PY'
+    python3 - "$TARGET_DIR/.mcp.json" "$HOSTS_SRC/claude-code/mcp.snippet.json" <<'PY'
 import json
 import sys
 
@@ -196,12 +201,12 @@ fi
 OPENCODE_CFG="$TARGET_DIR/opencode.json"
 if [[ "$install_opencode" == "1" ]]; then
     mkdir -p "$TARGET_DIR/.opencode/commands"
-    cp "$SCRIPT_DIR/opencode/commands/"*.md "$TARGET_DIR/.opencode/commands/"
-    for f in "$SCRIPT_DIR/opencode/commands/"*.md; do
+    cp "$HOSTS_SRC/opencode/commands/"*.md "$TARGET_DIR/.opencode/commands/"
+    for f in "$HOSTS_SRC/opencode/commands/"*.md; do
         record ".opencode/commands/$(basename "$f")"
     done
 
-    python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/agent.snippet.json" "$SCRIPT_DIR/opencode/permissions.snippet.json" <<'PY'
+    python3 - "$OPENCODE_CFG" "$HOSTS_SRC/opencode/agent.snippet.json" "$HOSTS_SRC/opencode/permissions.snippet.json" <<'PY'
 import json
 import re
 import sys
@@ -237,7 +242,7 @@ with open(config_path, "w", encoding="utf-8") as f:
 PY
     record "opencode.json"
     if [[ "$WITH_MCP" == "1" ]]; then
-        python3 - "$OPENCODE_CFG" "$SCRIPT_DIR/opencode/mcp.snippet.json" <<'PY'
+        python3 - "$OPENCODE_CFG" "$HOSTS_SRC/opencode/mcp.snippet.json" <<'PY'
 import json
 import re
 import sys
@@ -260,7 +265,7 @@ PY
         echo "  -> OpenCode: context-guard-mcp registered in opencode.json"
     fi
     echo "  -> OpenCode: commands in .opencode/commands/, config merged into opencode.json"
-    echo "     (permission setup, unverified against a real host: adapters/opencode/PERMISSIONS.md)"
+    echo "     (permission setup, unverified against a real host: docs/adapters/opencode/PERMISSIONS.md)"
 elif [[ "$HOST" == "all" ]]; then
     echo "  -> OpenCode: not detected, skipped (pass FORCE_OPENCODE=1 or --host opencode to install anyway)"
 else
@@ -274,15 +279,15 @@ fi
 # Manager alike, and travels with the repo instead of the user's machine.
 if [[ "$install_antigravity" == "1" ]]; then
     mkdir -p "$TARGET_DIR/.agents/rules"
-    cp "$SCRIPT_DIR/antigravity/rules/context-guard.md" "$TARGET_DIR/.agents/rules/context-guard.md"
+    cp "$HOSTS_SRC/antigravity/rules/context-guard.md" "$TARGET_DIR/.agents/rules/context-guard.md"
     record ".agents/rules/context-guard.md"
     echo "  -> Antigravity: rule installed at .agents/rules/context-guard.md"
-    echo "     (permission setup, unverified against a real host: adapters/antigravity/PERMISSIONS.md)"
+    echo "     (permission setup, unverified against a real host: docs/adapters/antigravity/PERMISSIONS.md)"
 
     if [[ "$WITH_ANTIGRAVITY_HOOK" == "1" ]]; then
         ANTIGRAVITY_HOOKS_CFG="$HOME/.gemini/config/hooks.json"
         mkdir -p "$(dirname "$ANTIGRAVITY_HOOKS_CFG")"
-        python3 - "$ANTIGRAVITY_HOOKS_CFG" "$SCRIPT_DIR/antigravity/hooks.snippet.json" <<'PY'
+        python3 - "$ANTIGRAVITY_HOOKS_CFG" "$HOSTS_SRC/antigravity/hooks.snippet.json" <<'PY'
 import json
 import sys
 
