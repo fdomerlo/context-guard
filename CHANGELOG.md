@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   single project for teams that commit the configuration.
 - The phase documents and every host artifact now ship inside the package as
   data, so nothing needs a clone of this repository to install.
+- `cg setup --no-hooks` declines Antigravity's `PreToolUse` deny hook, which
+  is installed by default. That hook is what stops the agent from running
+  `cg approve` itself, so the file it writes is annotated in the summary with
+  what it is and how to skip it.
 
 ### Changed
 

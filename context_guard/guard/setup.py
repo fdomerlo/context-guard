@@ -217,6 +217,11 @@ def _install_opencode(root, with_mcp, global_scope):
 HOOKS_MANUAL_FIX = ("left untouched; add the deny hook manually "
                     "(see docs/adapters/antigravity/PERMISSIONS.md)")
 
+# Annotated in the touched list because installing the hook is the one thing
+# `cg setup` does that takes something away from the agent. Consented is not
+# the same as silent: the line has to say what it is and how to decline it.
+HOOKS_NOTE = "(deny hook for cg approve — skip with --no-hooks)"
+
 
 def _hooks_shape_problem(cfg):
     """Why this config cannot be merged into, or None if it can.
@@ -243,7 +248,7 @@ def _hooks_shape_problem(cfg):
     return None
 
 
-def _install_antigravity(root, global_scope):
+def _install_antigravity(root, global_scope, no_hooks=False):
     """Global scope installs the deny hook; project scope installs the rule.
 
     The split follows what each artifact is for. The hook lives in user
@@ -261,6 +266,9 @@ def _install_antigravity(root, global_scope):
                 continue
             _write_text(os.path.join(root, ".agents", "rules", "context-guard.md"), text)
             return [".agents/rules/context-guard.md"], None
+        return [], None
+
+    if no_hooks:
         return [], None
 
     hooks_rel = os.path.join(".gemini", "config", "hooks.json")
@@ -293,7 +301,7 @@ def _install_antigravity(root, global_scope):
     if not already:
         pre_tool_use.append(new_hook)
     _write_json(hooks_path, cfg)
-    return [hooks_rel.replace(os.sep, "/")], None
+    return [f"{hooks_rel.replace(os.sep, '/')} {HOOKS_NOTE}"], None
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +347,7 @@ def hosts_to_install(host, home):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run_setup(host="all", with_mcp=False, project=None):
+def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
     """Install the adapters and return a CommandResult listing what changed."""
     if host not in VALID_HOSTS:
         return CommandResult(
@@ -367,13 +375,15 @@ def run_setup(host="all", with_mcp=False, project=None):
             # cannot be configured reports and steps aside: letting it abort
             # the run would let one unrelated file on disk decide that the
             # tool does not work on this machine.
-            host_touched, failure = _install_antigravity(root, global_scope)
+            host_touched, failure = _install_antigravity(root, global_scope, no_hooks)
             touched += host_touched
             if failure:
                 failures.append(failure)
                 lines.append("  -> Antigravity: hooks.json left untouched, see below")
             elif not global_scope:
                 lines.append("  -> Antigravity: rule installed")
+            elif no_hooks:
+                lines.append("  -> Antigravity: deny hook skipped (--no-hooks)")
             else:
                 lines.append("  -> Antigravity: deny hook merged into "
                              "~/.gemini/config/hooks.json")

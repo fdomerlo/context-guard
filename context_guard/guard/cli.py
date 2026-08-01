@@ -148,6 +148,12 @@ def parse_args(argv=None):
     p_setup.add_argument("--project", default=None,
                          help="Install into this project instead of the user's "
                               "home directory.")
+    p_setup.add_argument("--no-hooks", action="store_true",
+                         help="Skip Antigravity's PreToolUse deny hook. That "
+                              "hook is what stops the agent from running "
+                              "cg approve itself; without it Antigravity has "
+                              "no enforcement of the approval gate, only the "
+                              "workspace rule asking it not to.")
 
     p_list = subparsers.add_parser("list")
     p_list.add_argument("--context", default=".")
@@ -176,7 +182,8 @@ def dispatch(args):
     handlers = {
         "new": lambda: cmd_new(args.context, args.name, args.host),
         "setup": lambda: cmd_setup(
-            host=args.host, with_mcp=args.with_mcp, project=args.project),
+            host=args.host, with_mcp=args.with_mcp, project=args.project,
+            no_hooks=args.no_hooks),
         "list": lambda: cmd_list(args.context),
         "migrate": lambda: cmd_migrate(args.context),
         "begin": lambda: cmd_begin(args.context, args.phase, args.ttl, change),

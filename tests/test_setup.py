@@ -78,9 +78,10 @@ class SetupCase(unittest.TestCase):
     def env(self):
         return {"HOME": self.home, "PATH": self.bindir}
 
-    def setup(self, host="all", with_mcp=False, project=None):
+    def setup(self, host="all", with_mcp=False, project=None, no_hooks=False):
         with mock.patch.dict(os.environ, self.env()):
-            return cmd_setup(host=host, with_mcp=with_mcp, project=project)
+            return cmd_setup(host=host, with_mcp=with_mcp, project=project,
+                             no_hooks=no_hooks)
 
     def home_path(self, *parts):
         return os.path.join(self.home, *parts)
@@ -481,6 +482,52 @@ class TestOneHostFailingDoesNotAbortTheOthers(HooksCase):
         self.assertNotIn("hooks.json", touched)
 
 
+class TestNoHooksEscapeHatch(HooksCase):
+    """Pre-release audit, item 2. Installing the deny hook by default is
+    blessed — `cg setup` is already a consented act of global configuration,
+    and the hook is the enforcement. What was missing is that it happened
+    silently, with no way to decline it."""
+
+    def test_no_hooks_leaves_the_file_alone(self):
+        self.setup(host="antigravity", no_hooks=True)
+        self.assertFalse(os.path.exists(self.hooks_path()),
+                         "--no-hooks must not create the hooks file")
+
+    def test_no_hooks_does_not_modify_an_existing_file(self):
+        original = self.plant_hooks(json.dumps({"hooks": {"PreToolUse": []}}))
+        self.setup(host="antigravity", no_hooks=True)
+        self.assertEqual(self.hooks_raw(), original)
+
+    def test_the_hook_is_installed_by_default(self):
+        self.setup(host="antigravity")
+        self.assertTrue(os.path.exists(self.hooks_path()))
+
+    def test_the_output_says_what_the_hook_is_and_how_to_skip_it(self):
+        """Consented does not mean silent: the line naming the file has to
+        say what it does and how to decline it, or the escape hatch exists
+        only for people who read the source."""
+        res = self.setup(host="antigravity")
+        self.assertIn(".gemini/config/hooks.json (deny hook for cg approve "
+                      "— skip with --no-hooks)", res.message)
+
+    def test_no_hooks_still_installs_the_other_hosts(self):
+        self.detect_all_three()
+        self.setup(host="all", no_hooks=True)
+        self.assertTrue(os.path.exists(self.home_path(".claude", "commands", "cg-new.md")))
+        self.assertFalse(os.path.exists(self.hooks_path()))
+
+
+class TestNoHooksIsDocumentedInHelp(unittest.TestCase):
+    def test_help_names_the_flag_and_what_is_lost(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), self.assertRaises(SystemExit):
+            parse_args(["setup", "--help"])
+        text = buf.getvalue()
+        self.assertIn("--no-hooks", text)
+        self.assertIn("cg approve", text,
+                      "the help must say which protection is being declined")
+
+
 class TestWithMcpFlag(SetupCase):
     def test_mcp_is_not_registered_without_the_flag(self):
         self.setup(host="claude")
@@ -543,6 +590,10 @@ class TestFilesTouchedSummary(SetupCase):
         listed = [line.strip() for line in body.splitlines() if line.strip()]
         self.assertTrue(listed, f"no files listed in:\n{res.message}")
         for entry in listed:
+            # An entry may carry a trailing note explaining what it is — the
+            # Antigravity hook line does, so the escape hatch is visible where
+            # the file is named. The path is the part before it.
+            entry = entry.split(" (", 1)[0]
             path = entry if os.path.isabs(entry) else self.home_path(entry)
             with self.subTest(path=entry):
                 self.assertTrue(os.path.exists(path), f"{entry} was listed but does not exist")
