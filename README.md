@@ -94,9 +94,9 @@ cd context-guard && uv venv && uv pip install -e .
 git config core.hooksPath .githooks   # activates the pre-commit gate below
 ```
 
-To wire up phases and slash commands for your harness, run
-`adapters/install.sh [target-project-dir]` — see
-[Adapters](#adapters-and-permission-configuration) below.
+To wire up slash commands and permissions for your harness, run `cg setup`
+once per machine — see [Adapters](#adapters-and-permission-configuration)
+below. Phase files are written into each project by `cg new`.
 
 ## How it works
 
@@ -245,7 +245,7 @@ at `phases/{plan,execute,verify}.md` rather than duplicating them. How to put
 `cg approve` behind each harness's permission prompt is documented in
 [docs/adapters/](docs/adapters/), one `PERMISSIONS.md` per host, alongside the
 manual smoke-test checklist in [docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
-`adapters/install.sh` installs the right one for the detected host. The OpenCode and Antigravity
+`cg setup` installs the right one for each detected host. The OpenCode and Antigravity
 adapters are ported from state-guard and covered by static tests only — they
 have not been run against a live host of either.
 

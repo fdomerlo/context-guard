@@ -202,8 +202,8 @@ class TestNothingIsDuplicatedInTheRepoTree(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stderr)
         tracked = [line for line in res.stdout.splitlines() if line.strip()]
         self.assertEqual(
-            tracked, ["adapters/install.sh"],
-            "the only pre-F1 path still tracked must be install.sh, which F2 deletes",
+            tracked, [],
+            "no pre-F1 path may still be tracked (F2 removed the last one)",
         )
 
     def test_no_installable_artifact_remains_under_adapters(self):
@@ -218,8 +218,8 @@ class TestNothingIsDuplicatedInTheRepoTree(unittest.TestCase):
                         os.path.relpath(os.path.join(dirpath, name), REPO_ROOT))
         self.assertEqual(
             leftovers, [],
-            "artifacts and human docs both left adapters/ in F1 — only "
-            "install.sh stays, until F2 deletes it",
+            "artifacts and human docs both left adapters/ in F1; F2 removed "
+            "the installer that was the last thing in there",
         )
 
 

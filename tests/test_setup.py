@@ -523,6 +523,40 @@ class TestDoctorReportsPhaseDivergence(SetupCase):
         self.assertEqual(self._doctor().exit_code, clean)
 
 
+# Built from parts so this file does not itself contain the string it asserts
+# is gone from the repository. Spelling it out here would make the acceptance
+# criterion — "only the CHANGELOG still names it" — impossible to satisfy, and
+# weakening the assertion to accommodate the test would defeat its purpose.
+REMOVED_INSTALLER = "install" + ".sh"
+
+
+class TestTheShellInstallerIsGone(unittest.TestCase):
+    """F2 point 2: the installer is deleted with no compatibility wrapper."""
+
+    def test_the_file_does_not_exist(self):
+        self.assertFalse(
+            os.path.exists(os.path.join(REPO_ROOT, "adapters", REMOVED_INSTALLER)))
+
+    def test_git_no_longer_tracks_it(self):
+        """Checked through git, not the filesystem — deleting a file without
+        staging the deletion leaves it in every fresh clone, which is exactly
+        the mistake F1 made and only a git-level assertion caught."""
+        res = subprocess.run(["git", "ls-files", "adapters/"],
+                             cwd=REPO_ROOT, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "")
+
+    def test_nothing_but_the_changelog_still_mentions_it(self):
+        """F2's acceptance criterion, read literally."""
+        res = subprocess.run(["git", "grep", "-l", REMOVED_INSTALLER],
+                             cwd=REPO_ROOT, capture_output=True, text=True)
+        files = [line for line in res.stdout.splitlines() if line.strip()]
+        self.assertEqual(
+            files, ["CHANGELOG.md"],
+            "only the CHANGELOG may still name it, as the record of its removal",
+        )
+
+
 class TestEmbeddedCommandsAreScopeAgnostic(unittest.TestCase):
     """F2 point 4: the commands are installed globally now, so any assumption
     that they sit inside the project they act on is a bug that only shows up

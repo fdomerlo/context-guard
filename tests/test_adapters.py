@@ -1,26 +1,27 @@
-"""F3 acceptance checks for adapters/ (PLAN.md 0.7/F3): thin per-harness
-wrappers that point at phases/*.md instead of duplicating their prose, plus
-install.sh which wires them into a target project."""
+"""Static acceptance checks for the packaged host adapters: thin per-harness
+wrappers that point at the phase documents instead of duplicating their prose.
 
+The behavioural half of this file — everything that ran the shell installer
+against a fake HOME — moved to tests/test_setup.py in PLAN-2.1 F2, when `cg setup`
+replaced it. Those tests were ported, not dropped: idempotency and
+config preservation are still acceptance criteria."""
+
+import contextlib
+import io
 import json
 import os
 import re
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
 import unittest
+
+from context_guard.guard.cli import parse_args
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # PLAN-2.1 F1 split what used to live under adapters/ in two: the installable
 # artifacts became package data, the human-facing docs became documentation.
-# Only install.sh stayed behind, until F2 deletes it.
 HOSTS_DIR = os.path.join(REPO_ROOT, "context_guard", "_data", "hosts")
 DOCS_DIR = os.path.join(REPO_ROOT, "docs", "adapters")
 CLAUDE_CODE_DIR = os.path.join(HOSTS_DIR, "claude-code")
 OPENCODE_DIR = os.path.join(HOSTS_DIR, "opencode")
-INSTALL_SH = os.path.join(REPO_ROOT, "adapters", "install.sh")
 ABS_PATH_RE = re.compile(r"/home/|/Users/")
 
 DEAD_TERMS = ("watchdog", "hook_daemon", "/dev/tty", "sha-256", "sha256")
@@ -225,7 +226,7 @@ class TestAntigravityAdapterIsPerProject(unittest.TestCase):
 
     def test_old_global_snippet_path_is_gone(self):
         """A stale copy left behind is a second source of truth that can
-        drift from the one install.sh actually uses."""
+        drift from the one the installer actually uses."""
         self.assertFalse(
             os.path.exists(self.OLD_SNIPPET_PATH),
             "a bootstrap.snippet.md should be replaced by rules/context-guard.md, not kept alongside it",
@@ -272,13 +273,16 @@ class TestAntigravityHookSnippet(unittest.TestCase):
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
         self.assertIn("hooks.snippet.json", text)
-        self.assertIn("--with-antigravity-hook", text)
+        # F2 folded --with-antigravity-hook away: at global scope the hook was
+        # the only thing this host installed, so a second flag guarding it made
+        # `cg setup --host antigravity` a no-op.
+        self.assertIn("cg setup --host antigravity", text)
 
 
 class TestMcpRegistrationSnippets(unittest.TestCase):
     """F6 6.0.8: nobody registered the MCP server. It is a channel separate
     from the adapters (not a skill, not a command) and needs explicit
-    per-host registration — install.sh did none of it for any host."""
+    per-host registration — the old installer did none of it."""
 
     def test_claude_code_mcp_snippet_is_valid(self):
         path = os.path.join(CLAUDE_CODE_DIR, "mcp.snippet.json")
@@ -303,10 +307,12 @@ class TestMcpRegistrationSnippets(unittest.TestCase):
 
     def test_mcp_is_documented_as_optional(self):
         """PLAN.md 6.1: 'el MCP es transporte alternativo, no requisito — los
-        adapters funcionan completos sin él. install.sh lo dice en su
-        output.'"""
-        with open(INSTALL_SH, "r", encoding="utf-8") as f:
-            text = f.read()
+        adapters funcionan completos sin él.' The installer used to say so in
+        its output; `cg setup --help` is where that now has to live."""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), self.assertRaises(SystemExit):
+            parse_args(["setup", "--help"])
+        text = buf.getvalue()
         self.assertIn("--with-mcp", text)
         self.assertIn("optional", text.lower())
 
@@ -380,442 +386,6 @@ class TestOpenCodePermissionParity(unittest.TestCase):
         self.assertIn("permission", data)
 
 
-@unittest.skipUnless(shutil.which("bash"), "bash is required to run install.sh")
-class InstallShRunCase(unittest.TestCase):
-    """Base for tests that run install.sh for real against an isolated fake
-    HOME and target project, rather than only inspecting its source. F6's
-    bugs are behavioral (files landing in the wrong place, absolute paths
-    leaking into generated content) — a source-text check cannot catch
-    those, only actually running the script can."""
-
-    def setUp(self):
-        self.target = tempfile.mkdtemp(prefix="guard_install_target_")
-        self.home = tempfile.mkdtemp(prefix="guard_install_home_")
-
-    def tearDown(self):
-        shutil.rmtree(self.target, ignore_errors=True)
-        shutil.rmtree(self.home, ignore_errors=True)
-
-    def run_install(self, *args, env_overrides=None):
-        env = dict(os.environ)
-        env["HOME"] = self.home
-        if env_overrides:
-            env.update(env_overrides)
-        return subprocess.run(
-            ["bash", INSTALL_SH, self.target, *args],
-            env=env, capture_output=True, text=True,
-        )
-
-
-
-
-class TestClaudeCodeDenyIsInstalled(InstallShRunCase):
-    def test_deny_list_is_merged_into_claude_settings(self):
-        res = self.run_install()
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        settings_path = os.path.join(self.target, ".claude", "settings.json")
-        with open(settings_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertIn(
-            "Edit(.context-guard/**/manifest.json)",
-            cfg.get("permissions", {}).get("deny", []),
-        )
-
-    def test_running_install_twice_does_not_duplicate_deny_entries(self):
-        self.run_install()
-        self.run_install()
-        settings_path = os.path.join(self.target, ".claude", "settings.json")
-        with open(settings_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        deny = cfg["permissions"]["deny"]
-        self.assertEqual(deny.count("Edit(.context-guard/**/manifest.json)"), 1)
-
-    def test_a_preexisting_deny_entry_survives(self):
-        """6.4: 'las configs previas del usuario sobreviven intactas' — a
-        deny rule the user already had for something unrelated must not be
-        clobbered by the merge."""
-        os.makedirs(os.path.join(self.target, ".claude"), exist_ok=True)
-        settings_path = os.path.join(self.target, ".claude", "settings.json")
-        with open(settings_path, "w", encoding="utf-8") as f:
-            json.dump({"permissions": {"deny": ["Bash(rm -rf /*)"]}}, f)
-
-        self.run_install()
-
-        with open(settings_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertIn("Bash(rm -rf /*)", cfg["permissions"]["deny"])
-        self.assertIn("Edit(.context-guard/**/manifest.json)", cfg["permissions"]["deny"])
-
-
-class TestOpenCodeInstallsPerProject(InstallShRunCase):
-    """F6 6.0.1: the bug this closes — commands generated into
-    $HOME/.config/opencode/commands/ read $PHASES_SRC, the absolute path of
-    whatever repo clone install.sh was run from. Move the clone or delete
-    it and every installed command breaks; and it read the repo's own
-    phases/, not the copy install.sh puts in the target project."""
-
-    def test_commands_land_in_the_target_project(self):
-        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        for name in ("cg-new.md", "cg-continue.md"):
-            self.assertTrue(
-                os.path.exists(os.path.join(self.target, ".opencode", "commands", name)),
-                f".opencode/commands/{name} was not installed into the target project",
-            )
-
-    def test_nothing_is_written_under_home(self):
-        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertFalse(
-            os.path.exists(os.path.join(self.home, ".config", "opencode", "commands")),
-            "OpenCode commands must not be generated into $HOME anymore",
-        )
-
-    def test_installed_commands_carry_no_absolute_repo_path(self):
-        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        commands_dir = os.path.join(self.target, ".opencode", "commands")
-        for name in os.listdir(commands_dir):
-            with open(os.path.join(commands_dir, name), "r", encoding="utf-8") as f:
-                text = f.read()
-            self.assertNotRegex(text, ABS_PATH_RE, f"{name} embeds an absolute path")
-
-    def test_a_url_bearing_preexisting_config_is_not_silently_discarded(self):
-        """Found while wiring --with-mcp: the JSONC comment-stripping regex
-        (r'//.*?\\n') matched the "//" in "https://opencode.ai/config.json"
-        and ate the rest of that line, corrupting the file. The broad
-        except (FileNotFoundError, JSONDecodeError) around the parse then
-        silently treated the corrupted read as "no config yet" and
-        overwrote it — every run of the installer against a config
-        containing that (very standard) $schema URL was quietly discarding
-        the file's actual content, including anything the user had
-        customized by hand. A plain "did $schema survive" check does not
-        catch this: the except branch's own fallback happens to hardcode
-        the same URL, masking the corruption. A marker key with no such
-        lucky fallback does. The regex only misfires once the $schema line
-        is followed by a real newline before EOF — a single-line JSON seed
-        does not reproduce it, so this drives install.sh once first (its own
-        writes are pretty-printed with indent=2, i.e. real newlines) and
-        plants the marker into that pretty file before the second run, which
-        is the one that reads it back and corrupts it."""
-        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-
-        cfg_path = os.path.join(self.target, "opencode.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertEqual(cfg["$schema"], "https://opencode.ai/config.json")
-        cfg["my_custom_setting"] = "keep-me"
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-
-        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertEqual(cfg.get("my_custom_setting"), "keep-me")
-
-    def test_config_is_merged_into_the_project_opencode_json(self):
-        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        cfg_path = os.path.join(self.target, "opencode.json")
-        self.assertTrue(os.path.exists(cfg_path), "opencode.json was not written to the target project")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertIn("context-guard", cfg.get("agent", {}))
-        self.assertEqual(
-            cfg["permission"]["edit"][".context-guard/**/manifest.json"], "deny",
-        )
-        self.assertNotIn(
-            "tools", cfg.get("agent", {}).get("context-guard", {}),
-            "the deprecated tools key must not be installed into the target config",
-        )
-
-    def test_running_install_twice_does_not_duplicate_permission_entries(self):
-        self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        res = self.run_install(env_overrides={"FORCE_OPENCODE": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        cfg_path = os.path.join(self.target, "opencode.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        # A dict merge is duplicate-proof by construction; this pins that a
-        # future rewrite of the merge does not regress to a list-append that
-        # would grow unboundedly across reinstalls.
-        self.assertEqual(cfg["permission"]["bash"]["cg approve*"], "ask")
-
-
-class TestAntigravityInstallsPerProject(InstallShRunCase):
-    def test_rule_file_lands_in_the_target_project(self):
-        res = self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        rule_path = os.path.join(self.target, ".agents", "rules", "context-guard.md")
-        self.assertTrue(os.path.exists(rule_path), ".agents/rules/context-guard.md was not installed")
-        with open(rule_path, "r", encoding="utf-8") as f:
-            text = f.read()
-        self.assertIn("cg approve", text)
-
-    def test_gemini_md_is_not_touched(self):
-        self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
-        self.assertFalse(
-            os.path.exists(os.path.join(self.home, ".gemini", "GEMINI.md")),
-            "the global GEMINI.md injection must be gone",
-        )
-
-    def test_running_install_twice_leaves_identical_content(self):
-        self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
-        rule_path = os.path.join(self.target, ".agents", "rules", "context-guard.md")
-        with open(rule_path, "r", encoding="utf-8") as f:
-            first = f.read()
-
-        res = self.run_install(env_overrides={"FORCE_ANTIGRAVITY": "1"})
-        self.assertEqual(res.returncode, 0, res.stderr)
-        with open(rule_path, "r", encoding="utf-8") as f:
-            second = f.read()
-        self.assertEqual(first, second)
-
-
-class TestHostFlagSelectsWhichHostsInstall(InstallShRunCase):
-    """F6 6.0.9/6.2: install.sh always installed "everything detected" with
-    no way to ask for just one host. --host all (the default) keeps that
-    detection-as-filter behavior; naming a single host forces it regardless
-    of detection, since asking for it explicitly is itself the signal."""
-
-    def test_default_is_host_all(self):
-        res = self.run_install()
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".claude", "commands")))
-
-    def test_host_claude_installs_only_claude_code(self):
-        res = self.run_install("--host", "claude")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".claude", "commands")))
-        self.assertFalse(os.path.exists(os.path.join(self.target, ".opencode")))
-        self.assertFalse(os.path.exists(os.path.join(self.target, ".agents")))
-
-    def test_host_opencode_forces_install_without_detection(self):
-        """No FORCE_OPENCODE and no ~/.config/opencode in the fake HOME —
-        explicitly asking for this host must install it anyway."""
-        res = self.run_install("--host", "opencode")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".opencode", "commands", "cg-new.md")))
-        self.assertFalse(os.path.exists(os.path.join(self.target, ".claude")))
-
-    def test_host_antigravity_forces_install_without_detection(self):
-        res = self.run_install("--host", "antigravity")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".agents", "rules", "context-guard.md")))
-        self.assertFalse(os.path.exists(os.path.join(self.target, ".claude")))
-
-    def test_invalid_host_value_is_rejected(self):
-        res = self.run_install("--host", "bogus")
-        self.assertNotEqual(res.returncode, 0)
-        self.assertIn("bogus", res.stderr)
-
-    def test_help_documents_the_host_flag(self):
-        res = subprocess.run(["bash", INSTALL_SH, "--help"], capture_output=True, text=True)
-        self.assertEqual(res.returncode, 0)
-        self.assertIn("--host", res.stdout)
-
-
-class TestWithMcpFlag(InstallShRunCase):
-    def test_mcp_json_is_not_created_without_the_flag(self):
-        res = self.run_install("--host", "claude")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertFalse(os.path.exists(os.path.join(self.target, ".mcp.json")))
-
-    def test_with_mcp_registers_claude_code_mcp_json(self):
-        res = self.run_install("--host", "claude", "--with-mcp")
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        mcp_path = os.path.join(self.target, ".mcp.json")
-        self.assertTrue(os.path.exists(mcp_path), ".mcp.json was not created")
-        with open(mcp_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertEqual(cfg["mcpServers"]["context-guard"]["command"], "context-guard-mcp")
-
-    def test_with_mcp_registers_opencode_mcp_block(self):
-        res = self.run_install("--host", "opencode", "--with-mcp")
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        cfg_path = os.path.join(self.target, "opencode.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertIn("context-guard", cfg.get("mcp", {}))
-
-    def test_running_with_mcp_twice_is_idempotent(self):
-        self.run_install("--host", "claude", "--with-mcp")
-        res = self.run_install("--host", "claude", "--with-mcp")
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        with open(os.path.join(self.target, ".mcp.json"), "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertEqual(cfg["mcpServers"]["context-guard"]["command"], "context-guard-mcp")
-
-    def test_a_preexisting_mcp_server_entry_survives(self):
-        os.makedirs(self.target, exist_ok=True)
-        with open(os.path.join(self.target, ".mcp.json"), "w", encoding="utf-8") as f:
-            json.dump({"mcpServers": {"other-tool": {"command": "other-tool-mcp"}}}, f)
-
-        self.run_install("--host", "claude", "--with-mcp")
-
-        with open(os.path.join(self.target, ".mcp.json"), "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        self.assertIn("other-tool", cfg["mcpServers"])
-        self.assertIn("context-guard", cfg["mcpServers"])
-
-
-class TestWithAntigravityHookFlag(InstallShRunCase):
-    def hooks_path(self):
-        return os.path.join(self.home, ".gemini", "config", "hooks.json")
-
-    def test_hooks_json_is_not_created_without_the_flag(self):
-        res = self.run_install("--host", "antigravity")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertFalse(os.path.exists(self.hooks_path()))
-
-    def test_with_antigravity_hook_merges_the_deny_hook(self):
-        res = self.run_install("--host", "antigravity", "--with-antigravity-hook")
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        self.assertTrue(os.path.exists(self.hooks_path()), "~/.gemini/config/hooks.json was not written")
-        with open(self.hooks_path(), "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        pre_tool_use = cfg["hooks"]["PreToolUse"]
-        self.assertTrue(
-            any(h["matcher"]["tool"] == "run_command" for h in pre_tool_use),
-        )
-
-    def test_running_twice_does_not_duplicate_the_hook_entry(self):
-        self.run_install("--host", "antigravity", "--with-antigravity-hook")
-        res = self.run_install("--host", "antigravity", "--with-antigravity-hook")
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        with open(self.hooks_path(), "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        matching = [
-            h for h in cfg["hooks"]["PreToolUse"]
-            if h.get("matcher", {}).get("tool") == "run_command"
-            and "approve" in h.get("matcher", {}).get("commandPattern", "")
-        ]
-        self.assertEqual(len(matching), 1, "the hook entry must not be duplicated across runs")
-
-    def test_a_preexisting_unrelated_hook_survives(self):
-        os.makedirs(os.path.dirname(self.hooks_path()), exist_ok=True)
-        with open(self.hooks_path(), "w", encoding="utf-8") as f:
-            json.dump({
-                "hooks": {"PreToolUse": [{"matcher": {"tool": "write_file"}, "action": {"decision": "allow"}}]},
-            }, f)
-
-        self.run_install("--host", "antigravity", "--with-antigravity-hook")
-
-        with open(self.hooks_path(), "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        tools = [h["matcher"]["tool"] for h in cfg["hooks"]["PreToolUse"]]
-        self.assertIn("write_file", tools)
-        self.assertIn("run_command", tools)
-
-
-class TestFinalFileSummary(InstallShRunCase):
-    """PLAN.md F6 6.2: "--uninstall queda fuera de scope (backlog), pero el
-    installer imprime al final la lista exacta de archivos que tocó" — with
-    no uninstall command, the printed list is the only way to know what to
-    remove by hand."""
-
-    def test_summary_lists_every_file_touched(self):
-        res = self.run_install("--host", "claude", "--with-mcp")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        for relpath in (
-            ".claude/commands/cg-new.md",
-            ".claude/commands/cg-continue.md",
-            ".claude/settings.json",
-            ".mcp.json",
-        ):
-            with self.subTest(file=relpath):
-                self.assertIn(relpath, res.stdout)
-
-    def test_summary_only_lists_hosts_actually_installed(self):
-        res = self.run_install("--host", "claude")
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertNotIn(".opencode/", res.stdout)
-        self.assertNotIn(".agents/", res.stdout)
-
-
-class TestAcceptanceCriteria(InstallShRunCase):
-    """PLAN.md F6 acceptance criteria #2 and #3, checked literally rather
-    than piecemeal. FORCE_OPENCODE/FORCE_ANTIGRAVITY stand in for real
-    detection: neither host is installed in this environment, so --host all
-    alone would only exercise Claude Code."""
-
-    FORCE_ALL = {"FORCE_OPENCODE": "1", "FORCE_ANTIGRAVITY": "1"}
-
-    def _walk_text_files(self, root):
-        for dirpath, _dirnames, filenames in os.walk(root):
-            for name in filenames:
-                path = os.path.join(dirpath, name)
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        yield path, f.read()
-                except (UnicodeDecodeError, OSError):
-                    continue
-
-    def test_host_all_installs_every_hosts_artifacts_with_no_absolute_paths(self):
-        res = self.run_install("--host", "all", env_overrides=self.FORCE_ALL)
-        self.assertEqual(res.returncode, 0, res.stderr)
-
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".claude", "commands", "cg-new.md")))
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".opencode", "commands", "cg-new.md")))
-        self.assertTrue(os.path.exists(os.path.join(self.target, ".agents", "rules", "context-guard.md")))
-
-        with open(os.path.join(self.target, ".claude", "settings.json"), "r", encoding="utf-8") as f:
-            claude_cfg = json.load(f)
-        self.assertIn("Bash(cg approve*)", claude_cfg["permissions"]["ask"])
-
-        with open(os.path.join(self.target, "opencode.json"), "r", encoding="utf-8") as f:
-            opencode_cfg = json.load(f)
-        self.assertIn("context-guard", opencode_cfg["agent"])
-
-        for path, text in self._walk_text_files(self.target):
-            with self.subTest(file=path):
-                self.assertNotRegex(text, ABS_PATH_RE, f"{path} embeds an absolute path")
-
-    def test_second_run_against_populated_configs_changes_nothing(self):
-        """6.4: run twice against a toy project with preexisting configs
-        already populated; the second run's diff must be empty and nothing
-        the user already had gets clobbered."""
-        os.makedirs(os.path.join(self.target, ".claude"), exist_ok=True)
-        with open(os.path.join(self.target, ".claude", "settings.json"), "w", encoding="utf-8") as f:
-            json.dump({"permissions": {"ask": ["Bash(git push*)"], "deny": ["Bash(rm -rf /*)"]}}, f)
-        with open(os.path.join(self.target, "opencode.json"), "w", encoding="utf-8") as f:
-            json.dump({"$schema": "https://opencode.ai/config.json", "my_setting": "keep-me"}, f, indent=2)
-
-        res1 = self.run_install("--host", "all", "--with-mcp", env_overrides=self.FORCE_ALL)
-        self.assertEqual(res1.returncode, 0, res1.stderr)
-
-        snapshot = tempfile.mkdtemp(prefix="guard_install_snapshot_")
-        shutil.rmtree(snapshot)
-        shutil.copytree(self.target, snapshot)
-
-        res2 = self.run_install("--host", "all", "--with-mcp", env_overrides=self.FORCE_ALL)
-        self.assertEqual(res2.returncode, 0, res2.stderr)
-
-        diff = subprocess.run(
-            ["diff", "-r", snapshot, self.target], capture_output=True, text=True,
-        )
-        self.assertEqual(diff.returncode, 0, f"second run changed files:\n{diff.stdout}")
-        shutil.rmtree(snapshot, ignore_errors=True)
-
-        with open(os.path.join(self.target, ".claude", "settings.json"), "r", encoding="utf-8") as f:
-            claude_cfg = json.load(f)
-        self.assertIn("Bash(git push*)", claude_cfg["permissions"]["ask"])
-        self.assertIn("Bash(rm -rf /*)", claude_cfg["permissions"]["deny"])
-        with open(os.path.join(self.target, "opencode.json"), "r", encoding="utf-8") as f:
-            opencode_cfg = json.load(f)
-        self.assertEqual(opencode_cfg["my_setting"], "keep-me")
-
-
 class TestVerifyChecklist(unittest.TestCase):
     """F6 6.3/acceptance criterion 4: a repeatable manual smoke-test
     checklist, since none of the adapters' real host interaction (menus,
@@ -845,31 +415,3 @@ class TestVerifyChecklist(unittest.TestCase):
     def test_allows_antigravity_to_remain_pending(self):
         self.assertIn("pending", self.text.lower())
 
-
-class TestInstallSh(unittest.TestCase):
-    def setUp(self):
-        self.assertTrue(os.path.exists(INSTALL_SH), "adapters/install.sh is missing")
-        with open(INSTALL_SH, "r", encoding="utf-8") as f:
-            self.text = f.read()
-
-    def test_is_executable(self):
-        mode = os.stat(INSTALL_SH).st_mode
-        self.assertTrue(mode & stat.S_IXUSR, "adapters/install.sh must be executable")
-
-    def test_no_dead_daemon_or_crypto_gate_references(self):
-        lowered = self.text.lower()
-        for term in DEAD_TERMS:
-            self.assertNotIn(term, lowered, f"install.sh references dead machinery: {term}")
-
-    def test_installs_claude_code_commands_into_target_project(self):
-        # Resolved by the human: per-project install, not global — Claude
-        # Code's own convention for team-shared slash commands.
-        self.assertIn(".claude/commands", self.text)
-
-    def test_copies_phases_into_target_project(self):
-        self.assertIn("phases", self.text)
-        self.assertIn(".context-guard", self.text)
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `cg setup` installs the host adapters for Claude Code, OpenCode and
+  Antigravity. Global scope by default — one command per machine — with
+  `--project <dir>` keeping 2.1's predecessor behaviour of installing into a
+  single project for teams that commit the configuration.
+- The phase documents and every host artifact now ship inside the package as
+  data, so nothing needs a clone of this repository to install.
+
+### Changed
+
+- `cg new` materialises `.context-guard/phases/*.md` into the project from the
+  packaged copy, which is what makes a globally installed slash command work
+  in a project nobody prepared. A phase file that already exists is never
+  overwritten; `cg doctor` reports the difference as INFO.
+
+### Removed
+
+- `adapters/install.sh`, with no compatibility wrapper. Run `cg setup`
+  instead.
+- `--with-antigravity-hook`. The deny hook is installed by
+  `cg setup --host antigravity`, since at global scope it was the only thing
+  that flag's host had to install.
+
 ## [2.0.0] - 2026-07-31
 
 ### The state-guard merge

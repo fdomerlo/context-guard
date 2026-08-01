@@ -63,7 +63,7 @@ Entrá a la carpeta de tu proyecto y corré el instalador de adaptadores (viene 
 ```bash
 git clone https://github.com/fdomerlo/context-guard.git ~/context-guard
 cd /ruta/a/tu/proyecto
-bash ~/context-guard/adapters/install.sh . --host all
+cg setup
 ```
 
 El instalador detecta qué asistentes tenés y configura cada uno. Al final imprime la lista exacta de archivos que tocó — nada oculto. Lo que instala, en criollo:
@@ -175,6 +175,6 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 | Retomar tras un corte | `/cg-continue` | Continúa donde quedó |
 | Destrabar | `cg doctor --context . --fix` | — |
 
-Instalación (una vez): `pip install git+https://github.com/fdomerlo/context-guard.git@v2.0.0` y luego `bash ~/context-guard/adapters/install.sh . --host all` dentro de tu proyecto.
+Instalación (una vez): `pip install context-guard-cli` y luego `cg setup` una vez por máquina.
 
 Documentación completa, en inglés y español, en el [repositorio](https://github.com/fdomerlo/context-guard).

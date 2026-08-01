@@ -32,7 +32,7 @@ is not tied to the `context-guard` agent being the one running the command:
 }
 ```
 
-`adapters/install.sh` merges this alongside `agent.snippet.json` into the
+`cg setup` merges this alongside `agent.snippet.json` into the
 target project's `opencode.json` (or `opencode.jsonc`).
 
 Both spellings are listed because the package installs two entrypoints; an

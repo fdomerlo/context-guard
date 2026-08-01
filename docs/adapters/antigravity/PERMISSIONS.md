@@ -20,7 +20,7 @@ Antigravity has no per-command bash allowlist equivalent to Claude Code's
    before it runs. This is the layer that actually enforces anything.
 2. **Keep the workspace rule installed.** `rules/context-guard.md` (copied
    into `.agents/rules/context-guard.md` in the target project by
-   `adapters/install.sh`, read by IDE, CLI, and Manager) declares
+   `cg new`, read by IDE, CLI, and Manager) declares
    `cg approve` as human-only and tells the agent to stop and ask when
    `commit` returns exit 6. That is instruction-level, not enforcement: it
    shapes behaviour, it does not constrain it.
@@ -37,13 +37,13 @@ with the message "human-only command — ask the user to run it" — the
 equivalent, and stronger, of Claude Code's ask list, since it does not
 depend on auto-run being off in the first place.
 
-It is opt-in: `adapters/install.sh --host antigravity --with-antigravity-hook`
+It is installed by `cg setup --host antigravity`
 merges it into the shared `~/.gemini/config/hooks.json`, which is why it is
 not installed by default — it touches user config, not the project's.
 
 ## MCP registration
 
-`install.sh` does not automate this for Antigravity — the CLI's MCP config
+`cg setup` does not automate this for Antigravity — the CLI's MCP config
 lives in user/plugin config, not project config, so there is nothing safe to
 merge into the repo. Register manually: add an MCP server entry pointing
 `command` at `context-guard-mcp` in your Antigravity plugin/MCP settings.

@@ -91,9 +91,10 @@ cd context-guard && uv venv && uv pip install -e .
 git config core.hooksPath .githooks   # activa el gate de pre-commit de más abajo
 ```
 
-Para instalar las fases y los slash commands de tu harness, corré
-`adapters/install.sh [directorio-del-proyecto-destino]` — ver
-[Adapters](#adapters-y-configuración-de-permisos) más abajo.
+Para instalar los slash commands y los permisos de tu harness, corré
+`cg setup` una vez por máquina — ver
+[Adapters](#adapters-y-configuración-de-permisos) más abajo. Las fases las
+escribe `cg new` en cada proyecto.
 
 ## Cómo funciona
 
@@ -246,7 +247,7 @@ antigravity}/`, viven wrappers finos por harness — cada uno apunta a
 [docs/adapters/](docs/adapters/), un `PERMISSIONS.md` por host, junto con el
 checklist de smoke-test manual en
 [docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
-`adapters/install.sh` instala el que corresponde al host detectado. Los
+`cg setup` instala el que corresponde a cada host detectado. Los
 adapters de OpenCode y Antigravity están portados de state-guard y cubiertos
 solo por tests estáticos — no se corrieron contra un host real de ninguno de
 los dos.
