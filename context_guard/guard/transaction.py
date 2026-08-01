@@ -5,6 +5,7 @@ Follows the 3-state pipeline model: PLAN -> EXECUTE -> VERIFY -> ARCHIVE.
 """
 
 from datetime import datetime
+import getpass
 import os
 
 from .paths import get_paths
@@ -98,18 +99,18 @@ def cmd_approve(context, by=None, hotfix=False, reason=None, change=None):
             EXIT_VALIDATION,
         )
 
-    # Required, not defaulted to $USER: falling back to the environment made
-    # an agent-run `cg approve` indistinguishable from a human-run one
-    # whenever the shell happened to report a plausible name. This does not
-    # authenticate anyone — an agent can still pass any string — but it
-    # forces an active choice instead of silently inheriting one, so the
-    # omission is visible in the manifest rather than papered over.
-    who = (by or "").strip()
-    if not who:
-        return CommandResult(
-            "FAIL|BY_REQUIRED|pass --by <who>",
-            EXIT_VALIDATION,
-        )
+    # Defaults to the OS user (PLAN-2.1 F2.1), reversing 2.0's decision to
+    # require it. 2.0 argued that inheriting the environment made an
+    # agent-run approve indistinguishable from a human-run one — but that
+    # was only ever half true, since an agent could pass any string it liked.
+    # The flag never authenticated anyone; it only forced an active choice.
+    #
+    # What it did cost is friction on the one step that must not be
+    # automated, and friction there is precisely what pushes people into
+    # letting the agent run it. This value is audit metadata — who to ask
+    # about this approval later — not proof of who ran the command. The
+    # authentication was, and remains, the harness permission prompt.
+    who = (by or "").strip() or getpass.getuser()
 
     # Checked before taking the write lock: acquiring it would create the
     # change directory as a side effect, inventing the change the caller

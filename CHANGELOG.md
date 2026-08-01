@@ -19,6 +19,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
+- `--context` defaults to the working directory on every subcommand, and
+  `--by` defaults to the OS user, so with a single active change the whole
+  human approval is `cg approve` with no flags at all.
+- **`--by` is no longer required.** 2.0 required it, arguing that inheriting
+  the environment made an agent-run approve indistinguishable from a
+  human-run one. The flag never authenticated anyone — an agent can pass any
+  string — and requiring it put friction on the one step that must not be
+  automated. It is audit metadata: who to ask about an approval later. The
+  authentication was and remains the harness permission prompt, which the
+  Threat Model now says explicitly.
 - `cg new` materialises `.context-guard/phases/*.md` into the project from the
   packaged copy, which is what makes a globally installed slash command work
   in a project nobody prepared. A phase file that already exists is never

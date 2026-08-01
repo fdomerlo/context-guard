@@ -42,18 +42,18 @@ def parse_args(argv=None):
 
     # -- Transacciones y Checkpoints --
     p_begin = subparsers.add_parser("begin")
-    p_begin.add_argument("--context", required=True)
+    p_begin.add_argument("--context", default=".")
     p_begin.add_argument("--phase", required=True)
     p_begin.add_argument("--ttl", type=int, default=1800)
 
     p_commit = subparsers.add_parser("commit")
-    p_commit.add_argument("--context", required=True)
+    p_commit.add_argument("--context", default=".")
     p_commit.add_argument("--next-phase", required=True)
 
     # Human-only: the agent must ask for this to be run, not run it. Pair it
     # with your harness's permission prompt (see adapters/*/PERMISSIONS.md).
     p_approve = subparsers.add_parser("approve")
-    p_approve.add_argument("--context", required=True)
+    p_approve.add_argument("--context", default=".")
     p_approve.add_argument("--by", default=None,
                            help="Who is approving (required)")
     p_approve.add_argument("--hotfix", action="store_true",
@@ -62,26 +62,26 @@ def parse_args(argv=None):
                            help="Why the pipeline is being skipped; persisted in the manifest")
 
     p_rollback = subparsers.add_parser("rollback")
-    p_rollback.add_argument("--context", required=True)
+    p_rollback.add_argument("--context", default=".")
 
     p_checkpoint = subparsers.add_parser("checkpoint")
-    p_checkpoint.add_argument("--context", required=True)
+    p_checkpoint.add_argument("--context", default=".")
     p_checkpoint.add_argument("--summary", required=True)
 
     # -- Sesión --
     p_check = subparsers.add_parser("check-lock")
-    p_check.add_argument("--context", required=True)
+    p_check.add_argument("--context", default=".")
 
     p_claim = subparsers.add_parser("claim")
-    p_claim.add_argument("--context", required=True)
+    p_claim.add_argument("--context", default=".")
     p_claim.add_argument("--ttl", type=int, default=1800)
 
     p_acq = subparsers.add_parser("acquire")
-    p_acq.add_argument("--context", required=True)
+    p_acq.add_argument("--context", default=".")
     p_acq.add_argument("--ttl", type=int, default=1800)
 
     p_release = subparsers.add_parser("release")
-    p_release.add_argument("--context", required=True)
+    p_release.add_argument("--context", default=".")
     p_release.add_argument("--agent-id", default=None,
                            help="Identity of the lock owner (required unless --force)")
     p_release.add_argument("--force", action="store_true",
@@ -89,12 +89,12 @@ def parse_args(argv=None):
 
     # -- Tareas --
     p_claim_task = subparsers.add_parser("claim-task")
-    p_claim_task.add_argument("--context", required=True)
+    p_claim_task.add_argument("--context", default=".")
     p_claim_task.add_argument("--task-id", required=True)
     p_claim_task.add_argument("--agent-id", default=None)
 
     p_release_task = subparsers.add_parser("release-task")
-    p_release_task.add_argument("--context", required=True)
+    p_release_task.add_argument("--context", default=".")
     p_release_task.add_argument("--task-id", required=True)
     p_release_task.add_argument("--agent-id", default=None,
                                 help="Validate ownership before release")
@@ -103,32 +103,32 @@ def parse_args(argv=None):
 
     # -- Utilidades --
     p_completion = subparsers.add_parser("check-completion")
-    p_completion.add_argument("--context", required=True)
+    p_completion.add_argument("--context", default=".")
 
     p_validate = subparsers.add_parser("validate")
-    p_validate.add_argument("--context", required=True)
+    p_validate.add_argument("--context", default=".")
     p_validate.add_argument("--max-length", type=int, default=None,
                             help="Override max artifact size")
 
     p_next = subparsers.add_parser("next-task")
-    p_next.add_argument("--context", required=True)
+    p_next.add_argument("--context", default=".")
     p_next.add_argument("--agent-id", default=None)
 
     p_status = subparsers.add_parser("status")
-    p_status.add_argument("--context", required=True)
+    p_status.add_argument("--context", default=".")
 
     p_doctor = subparsers.add_parser("doctor")
-    p_doctor.add_argument("--context", required=True)
+    p_doctor.add_argument("--context", default=".")
     p_doctor.add_argument("--fix", action="store_true",
                           help="Release task claims whose owning PID is gone")
 
     # -- Archive --
     p_archive = subparsers.add_parser("archive")
-    p_archive.add_argument("--context", required=True)
+    p_archive.add_argument("--context", default=".")
 
     # -- Changes --
     p_new = subparsers.add_parser("new")
-    p_new.add_argument("--context", required=True)
+    p_new.add_argument("--context", default=".")
     p_new.add_argument("name")
     p_new.add_argument("--host", choices=["claude", "opencode", "antigravity"],
                        default=None,
@@ -150,10 +150,10 @@ def parse_args(argv=None):
                               "home directory.")
 
     p_list = subparsers.add_parser("list")
-    p_list.add_argument("--context", required=True)
+    p_list.add_argument("--context", default=".")
 
     p_migrate = subparsers.add_parser("migrate")
-    p_migrate.add_argument("--context", required=True)
+    p_migrate.add_argument("--context", default=".")
 
     # Every context-scoped command accepts --change. Omitting it is only safe
     # when exactly one change is active; ambiguity is an error, never a guess.

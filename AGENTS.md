@@ -50,7 +50,7 @@ Before running `commit --next-phase EXECUTE`, present `objective.md` and
 phase unprompted. `commit` enforces this: without a recorded approval it fails
 with `APPROVAL_REQUIRED` (code 6).
 
-`cg approve --change <name> --by <who> [--hotfix --reason "<text>"]` records
+`cg approve [--change <name>] [--by <who>] [--hotfix --reason "<text>"]` records
 it. **Never run it yourself** — ask the human to. `--by` is required: there is
 no default, so an agent that runs it anyway cannot pass silently as the
 environment's `$USER`. The approval is spent by the

@@ -32,7 +32,7 @@ avanzar a ejecución, reclamar una tarea, y chequear el estado.
 
 ```bash
 # (1) inicia un change — esto arranca PLAN y scaffoldea los artefactos
-cg new redis-cache --context .
+cg new redis-cache
 
 # completa el plan — lo escribe un agente, no vos
 cat > .context-guard/changes/redis-cache/objective.md <<'EOF'
@@ -45,16 +45,16 @@ cat > .context-guard/changes/redis-cache/tasks.md <<'EOF'
 EOF
 
 # (2) un humano revisa objective.md y tasks.md, y aprueba
-cg approve --context . --change redis-cache --by alice
+cg approve
 
 # (3) la aprobación registrada desbloquea EXECUTE
-cg commit --context . --change redis-cache --next-phase EXECUTE
+cg commit --next-phase EXECUTE
 
 # (4) reclama la próxima tarea de forma atómica — seguro con varios agentes a la vez
-cg next-task --context . --change redis-cache
+cg next-task
 
 # (5) rehidratación en un solo paso tras un crash, una compactación, o una sesión nueva
-cg status --context . --change redis-cache
+cg status
 ```
 
 Cada línea de arriba corre tal cual está escrita contra un directorio nuevo;
@@ -142,7 +142,10 @@ Un agente con shell puede escribir directamente a `manifest.json`, o
 simplemente no usar la herramienta, y nada en el proceso lo detiene.
 
 El único comando explícitamente **humano** es `cg approve`. Registra el
-visto bueno que `commit --next-phase EXECUTE` exige — pero el comando en sí
+visto bueno que `commit --next-phase EXECUTE` exige. El nombre que anota
+(`--by`, que por defecto toma el usuario del sistema) es **metadata de
+auditoría, no autenticación**: dice a quién preguntarle por esa aprobación
+más adelante, y un agente podría pasar cualquier string. El comando en sí
 es tan cooperativo como el resto: un agente con shell puede correr
 `cg approve` él mismo, y nada en `cg` lo impide. El control duro real no
 vive en `cg` en absoluto — vive en el permission prompt de tu harness sobre
@@ -167,7 +170,7 @@ garantía de corrección, y viene con un bypass auditado
 | `cg new <nombre> --context <ruta>` | Crea un change y arranca PLAN |
 | `cg list --context <ruta>` | Lista los changes activos y su fase |
 | `cg begin --phase <FASE> --context <ruta>` | Inicia una transacción para la fase dada |
-| `cg approve --context <ruta> --by <quién> [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
+| `cg approve [--by <quién>] [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
 | `cg commit --next-phase <FASE> --context <ruta>` | Valida los artefactos de la fase actual y avanza el DAG |
 | `cg rollback --context <ruta>` | Restaura el snapshot del manifest tomado en `begin` |
 | `cg checkpoint --summary "<texto>" --context <ruta>` | Persiste un resumen de sesión para retomar en caliente |

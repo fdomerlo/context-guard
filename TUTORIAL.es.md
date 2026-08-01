@@ -83,8 +83,12 @@ Acá está el corazón del sistema, y es importante que lo entiendas antes del p
 Cuando el asistente termina de planificar, intenta pasar a la fase de ejecución. context-guard se lo niega con un mensaje claro: *falta la aprobación humana*. El asistente entonces se detiene y te pide que corras vos este comando:
 
 ```bash
-cg approve --context . --change nombre-del-cambio --by tu-nombre
+cg approve
 ```
+
+Sin flags: con un solo cambio activo, context-guard sabe cuál es, y anota tu
+usuario del sistema como responsable. Si tenés varios cambios en paralelo,
+agregá `--change nombre-del-cambio`.
 
 Ese comando es **solo tuyo**. La configuración que instaló el paso 4 hace que, si el asistente intentara correrlo por su cuenta, tu aplicación de IA te muestre un cartel de confirmación antes de permitirlo — y ahí simplemente decís que no. El resultado práctico: **ningún código se escribe sin que vos hayas leído el plan y dado el visto bueno.** Es un semáforo con tu nombre.
 
@@ -111,7 +115,7 @@ El asistente crea el cambio y entra automáticamente en la fase **PLAN**. Detrá
 **Paso 3 — Aprobar.** Leé el plan (está en `.context-guard/changes/login-form/`, en archivos legibles: `objective.md`, `tasks.md`). Si estás de acuerdo, en TU terminal:
 
 ```bash
-cg approve --context . --change login-form --by fernando
+cg approve
 ```
 
 Avisale al asistente que ya aprobaste, y ahora sí: pasa a **EXECUTE**.
@@ -119,7 +123,7 @@ Avisale al asistente que ya aprobaste, y ahora sí: pasa a **EXECUTE**.
 **Paso 4 — Ejecutar.** El asistente toma las tareas de la lista una por una — pide la siguiente con `cg next-task`, la hace, la marca completada. Cada tarea marcada queda escrita en disco al instante. Vos podés mirar el avance cuando quieras:
 
 ```bash
-cg status --context . --change login-form
+cg status
 ```
 
 **Paso 5 — Verificar.** Con todas las tareas completas, el asistente pasa a **VERIFY**: revisa su propio trabajo, corre los tests, y escribe dos reportes (revisión y verificación). Si algo falló, vuelve a corregir. Al terminar, el cambio se archiva con su historia completa.
@@ -149,7 +153,7 @@ Probalo a propósito la primera vez: cerrá la sesión en medio del trabajo y re
 **"Quedó todo trabado y nadie está trabajando."** Pasa si una sesión murió de forma fea. Corré el médico:
 
 ```bash
-cg doctor --context . --fix
+cg doctor --fix
 ```
 
 Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas un traba editando los archivos de `.context-guard/` a mano.
@@ -170,10 +174,10 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 |---|---|---|
 | Empezar algo nuevo | `/cg-new nombre` | Crea el cambio, entra a PLAN |
 | Revisar el plan | Leés `objective.md` y `tasks.md` | Espera tu aprobación |
-| Aprobar | `cg approve --context . --change nombre --by vos` | Pasa a EXECUTE |
-| Ver el avance | `cg status --context . --change nombre` | — |
+| Aprobar | `cg approve` | Pasa a EXECUTE |
+| Ver el avance | `cg status` | — |
 | Retomar tras un corte | `/cg-continue` | Continúa donde quedó |
-| Destrabar | `cg doctor --context . --fix` | — |
+| Destrabar | `cg doctor --fix` | — |
 
 Instalación (una vez): `pip install context-guard-cli` y luego `cg setup` una vez por máquina.
 

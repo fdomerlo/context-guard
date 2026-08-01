@@ -192,27 +192,30 @@ class TestApproveAuditTrail(ApproveTestCase):
         self.assertEqual(approval["by"], "ci-pipeline")
         self.assertTrue(approval["at"])
 
-    def test_approve_without_by_is_rejected(self):
-        """PLAN.md F7: defaulting to $USER made an agent-run `cg approve`
-        indistinguishable from a human-run one whenever the agent's shell
-        environment happened to report a plausible name. Requiring --by does
-        not authenticate anyone — an agent can still pass any string — but it
-        forces an active choice instead of silently inheriting the
-        environment, so the omission is visible rather than papered over."""
-        self._planned_change("alpha")
+    def test_the_recorded_approver_is_never_empty(self):
+        """PLAN.md F7 made --by required, arguing that defaulting to the
+        environment made an agent-run approve indistinguishable from a
+        human-run one. PLAN-2.1 F2.1 reversed that: the flag never
+        authenticated anyone (an agent can pass any string), and requiring it
+        put friction on the one step that must not be automated, which is what
+        pushes people into letting the agent run it.
 
-        res = cmd_approve(self.context, change="alpha")
-
-        self.assertEqual(res.exit_code, EXIT_VALIDATION, res.message)
-        self.assertIsNone(load_manifest(self.context, "alpha").get("approval"))
-
-    def test_approve_with_empty_by_is_rejected(self):
-        """An empty string is not a name — the same gap as omitting it."""
-        self._planned_change("alpha")
-
-        res = cmd_approve(self.context, by="", change="alpha")
-
-        self.assertEqual(res.exit_code, EXIT_VALIDATION, res.message)
+        What survives the reversal, and what this defends, is narrower: the
+        audit trail must always name someone. A cooperative gate that records
+        an empty approver has no value left at all — it can neither stop the
+        work nor say who authorised it. The defaulting rules are covered in
+        tests/test_ergonomics.py; this is the invariant underneath them."""
+        for i, by in enumerate((None, "", "   ")):
+            with self.subTest(by=by):
+                name = f"blank{i}"
+                self._planned_change(name)
+                res = cmd_approve(self.context, by=by, change=name)
+                self.assertEqual(res.exit_code, EXIT_OK, res.message)
+                approval = load_manifest(self.context, name)["approval"]
+                self.assertTrue(
+                    approval["by"] and approval["by"].strip(),
+                    "an approval was recorded naming nobody",
+                )
 
     def test_approve_on_a_context_without_session_fails(self):
         res = cmd_approve(self.context, by="fdomerlo", change="ghost")

@@ -34,7 +34,7 @@ execution, claim a task, and check where things stand.
 <!-- quickstart:start -->
 ```bash
 # (1) start a change — this begins PLAN and scaffolds the artifacts
-cg new redis-cache --context .
+cg new redis-cache
 
 # fill in the plan — an agent writes this, not you
 cat > .context-guard/changes/redis-cache/objective.md <<'EOF'
@@ -47,16 +47,16 @@ cat > .context-guard/changes/redis-cache/tasks.md <<'EOF'
 EOF
 
 # (2) a human reviews objective.md and tasks.md, then approves
-cg approve --context . --change redis-cache --by alice
+cg approve
 
 # (3) the recorded approval unlocks EXECUTE
-cg commit --context . --change redis-cache --next-phase EXECUTE
+cg commit --next-phase EXECUTE
 
 # (4) claim the next task atomically — safe with several agents at once
-cg next-task --context . --change redis-cache
+cg next-task
 
 # (5) one-shot rehydration after a crash, a compaction, or a new session
-cg status --context . --change redis-cache
+cg status
 ```
 <!-- quickstart:end -->
 
@@ -143,8 +143,11 @@ to `manifest.json`, or simply not use the tool at all, and nothing in the
 process stops it.
 
 The one command that is explicitly **human-only** is `cg approve`. It
-records the sign-off `commit --next-phase EXECUTE` requires — but the
-command itself is just as cooperative as the rest: an agent with a shell can
+records the sign-off `commit --next-phase EXECUTE` requires. The name it
+records (`--by`, defaulting to the OS user) is **audit metadata, not
+authentication**: it says who to ask about this approval later, and an agent
+could pass any string it liked. The command itself is just as cooperative as
+the rest: an agent with a shell can
 run `cg approve` itself, and nothing in `cg` prevents that. The actual hard
 control does not live in `cg` at all — it is your harness's permission
 prompt on the `cg approve` command, configured per host in
@@ -167,7 +170,7 @@ unconditional block just gets `--no-verify`d, which leaves no trace at all.
 | `cg new <name> --context <path>` | Create a change and begin PLAN |
 | `cg list --context <path>` | List active changes and their phase |
 | `cg begin --phase <PHASE> --context <path>` | Start a transaction for the given phase |
-| `cg approve --context <path> --by <who> [--hotfix --reason "<text>"]` | Human-only: record the sign-off `commit` into EXECUTE requires |
+| `cg approve [--by <who>] [--hotfix --reason "<text>"]` | Human-only: record the sign-off `commit` into EXECUTE requires |
 | `cg commit --next-phase <PHASE> --context <path>` | Validate the current phase's artifacts and advance the DAG |
 | `cg rollback --context <path>` | Restore the manifest snapshot taken at `begin` |
 | `cg checkpoint --summary "<text>" --context <path>` | Persist a session summary for warm-boot resume |
