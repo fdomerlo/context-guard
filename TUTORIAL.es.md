@@ -37,7 +37,7 @@ Una aclaración honesta, porque este proyecto se toma en serio la honestidad: co
 Abrí la terminal y corré:
 
 ```bash
-pip install context-guard-cli
+uv tool install context-guard-cli
 cg setup
 ```
 
@@ -48,8 +48,14 @@ aprobación (paso 4). Al terminar imprime la lista exacta de archivos que
 tocó — nada oculto. Podés correrlo las veces que quieras: si ya está
 instalado, no duplica nada.
 
-*(Si usás `uv`, que es más rápido: `uv tool install context-guard-cli` y
-después `cg setup`.)*
+¿No tenés `uv`? `pipx install context-guard-cli` hace lo mismo. Si ninguno de
+los dos está disponible, `pip install context-guard-cli` también funciona,
+como alternativa.
+
+> **Ojo con esta:** `uv pip install context-guard-cli` *no* es lo mismo que
+> `uv tool install`. Instala la herramienta adentro del entorno virtual de
+> tu proyecto actual, no en tu máquina — y `cg setup` necesita que `cg` esté
+> disponible en cualquier terminal, no solo dentro de ese proyecto.
 
 Verificá que quedó todo:
 
@@ -64,9 +70,17 @@ herramienta; todo lo que hagas con context-guard empieza con `cg`.
 un cambio en un proyecto nuevo, `cg new` escribe ahí lo que falte. No
 necesitás descargar este repositorio ni copiar archivos a mano.
 
-> **Si algo falla:** el error más común es que `pip` instaló pero la terminal
-> no encuentra `cg`. Cerrá y reabrí la terminal. Si persiste, probá
-> `python3 -m pip install --user context-guard-cli` y de nuevo cerrar/reabrir.
+> **¿Dónde quedó instalado?** `uv tool install` y `pipx` ponen `cg` en un
+> directorio propio (`~/.local/bin` en Linux/macOS típicamente) y lo agregan
+> al PATH por vos. `pip install` sin `--user` lo deja donde viva tu Python
+> del sistema; con `--user`, en `~/.local/bin` también. Si el paso de
+> verificación de arriba no encuentra `cg`, es casi siempre esto: el
+> directorio existe pero tu terminal no lo tiene en el PATH todavía.
+
+> **Si algo falla:** el error más común es que la instalación terminó bien
+> pero la terminal no encuentra `cg`. Cerrá y reabrí la terminal. Si
+> persiste, probá `python3 -m pip install --user context-guard-cli` y de
+> nuevo cerrar/reabrir.
 
 ---
 
@@ -173,6 +187,6 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 | Retomar tras un corte | `/cg-continue` | Continúa donde quedó |
 | Destrabar | `cg doctor --fix` | — |
 
-Instalación (una vez): `pip install context-guard-cli` y luego `cg setup` una vez por máquina.
+Instalación (una vez): `uv tool install context-guard-cli` y luego `cg setup` una vez por máquina.
 
 Documentación completa, en inglés y español, en el [repositorio](https://github.com/fdomerlo/context-guard).

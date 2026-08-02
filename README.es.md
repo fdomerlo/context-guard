@@ -66,9 +66,19 @@ nada acá es un resumen ilustrativo.
 Dos líneas, una vez por máquina:
 
 ```bash
-pip install context-guard-cli
+uv tool install context-guard-cli
 cg setup
 ```
+
+¿No tenés `uv`? `pipx install context-guard-cli` hace lo mismo. Ambos
+instalan en un entorno aislado y dejan `cg` en el PATH global — que es el
+punto, porque `cg setup` configura tu máquina una vez, no una vez por
+proyecto. `pip install context-guard-cli` también funciona, como alternativa
+para una instalación de Python simple sin `uv`/`pipx` disponible. **No uses
+`uv pip install context-guard-cli`**: eso instala en el venv que esté activo
+en ese momento — el de un proyecto puntual, si estás parado adentro de
+uno — no en la máquina, lo que anula en silencio el sentido de un `cg setup`
+global.
 
 `cg setup` detecta Claude Code, OpenCode y Antigravity, instala los slash
 commands, y deja `cg approve` detrás del permission prompt de cada uno — ver

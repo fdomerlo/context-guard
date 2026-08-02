@@ -76,6 +76,26 @@ class TestPitchAndLanguage(ReadmeTestCase):
         )
 
 
+class TestInstallSection(ReadmeTestCase):
+    """PLAN-2.2 F2 point 2: the docs fix carried over from 2.1. `uv tool
+    install` (or `pipx`) is the primary path this project wants — isolated,
+    does not touch a project's own venv — with `pip install` kept as the
+    fallback and an explicit warning against `uv pip install`, which installs
+    into whatever venv happens to be active rather than the machine, the
+    opposite of what a global `cg setup` assumes."""
+
+    def test_uv_tool_install_is_documented(self):
+        self.assertIn("uv tool install context-guard-cli", self.text)
+
+    def test_uv_pip_install_is_not_recommended_for_this(self):
+        """Not "absent" — `uv pip install -e` legitimately appears in the
+        Development section, installing the repo itself into its own venv.
+        The Install section specifically must warn against using the same
+        form for the CLI."""
+        self.assertIn("uv pip install", self.text)
+        self.assertRegex(self.text, r"(?i)(not|don't|instead of).{0,80}uv pip install")
+
+
 class TestExitCodeTable(ReadmeTestCase):
     """The exact bug this phase exists to catch: the old table described
     EXIT_APPROVAL_REQUIRED as reserved for a flow that shipped in F4."""
