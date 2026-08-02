@@ -69,9 +69,18 @@ illustrative shorthand.
 Two lines, once per machine:
 
 ```bash
-pip install context-guard-cli
+uv tool install context-guard-cli
 cg setup
 ```
+
+No `uv`? `pipx install context-guard-cli` works the same way. Both install
+into an isolated environment and put `cg` on PATH globally — the whole point,
+since `cg setup` configures your machine once, not once per project.
+`pip install context-guard-cli` also works, as a fallback for a plain Python
+install with no `uv`/`pipx` available. **Do not use `uv pip install
+context-guard-cli`**: that installs into whichever venv is currently active —
+a single project's, if you happen to be inside one — not onto the machine,
+which silently defeats the point of a global `cg setup`.
 
 `cg setup` detects Claude Code, OpenCode and Antigravity, installs the slash
 commands, and puts `cg approve` behind each one's permission prompt — see
@@ -92,6 +101,22 @@ git clone https://github.com/fdomerlo/context-guard.git
 cd context-guard && uv venv && uv pip install -e ".[dev]"
 git config core.hooksPath .githooks   # activates the pre-commit gate below
 ```
+
+## Upgrading
+
+```bash
+uv tool upgrade context-guard-cli && cg setup
+```
+
+The second command is not optional. `cg setup` copies commands, skills and
+permission snippets into your host configs; upgrading the package does not
+touch those copies, so a new version's adapter fixes only reach a machine
+once `cg setup` runs again. It is idempotent — safe to run any time.
+
+Phase files already materialised in a project (`.context-guard/phases/`)
+are never overwritten, by design: a project keeps the phases it was started
+with, including your edits. Delete a phase file and run `cg new` to pull the
+current version.
 
 ## How it works
 
@@ -243,9 +268,7 @@ at `phases/{plan,execute,verify}.md` rather than duplicating them. How to put
 `cg approve` behind each harness's permission prompt is documented in
 [docs/adapters/](docs/adapters/), one `PERMISSIONS.md` per host, alongside the
 manual smoke-test checklist in [docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
-`cg setup` installs the right one for each detected host. The OpenCode and Antigravity
-adapters are ported from state-guard and covered by static tests only — they
-have not been run against a live host of either.
+`cg setup` installs the right one for each detected host.
 
 ## How this compares
 

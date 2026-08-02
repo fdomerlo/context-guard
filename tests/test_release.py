@@ -23,16 +23,16 @@ SPANISH_INDICATORS = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
 
 
 class TestPyprojectVersion(unittest.TestCase):
-    def test_version_is_2_1_0(self):
-        """A minor bump: `cg setup` and packaged data are additive, and the
-        one removal (the shell installer) is a tool the package never
-        exported as API. PLAN-2.1 F3 fixes the number here so the release tag
-        and the CHANGELOG cannot drift from what actually ships."""
+    def test_version_is_2_2_0(self):
+        """A minor bump: Antigravity discovery parity and the detector/docs
+        fixes are additive, nothing removed from the public surface.
+        PLAN-2.2 F3 fixes the number here so the release tag and the
+        CHANGELOG cannot drift from what actually ships."""
         with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
             text = f.read()
         match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "version not declared")
-        self.assertEqual(match.group(1), "2.1.0")
+        self.assertEqual(match.group(1), "2.2.0")
 
     def test_description_is_the_one_sentence_pitch(self):
         """PLAN.md 0.7's pitch doubles as the PyPI project description — the
@@ -143,6 +143,53 @@ class TestTwoPointOneEntry(unittest.TestCase):
 
     def test_it_records_that_cg_new_scaffolds_the_phases(self):
         self.assertIn("cg new", self.section)
+
+
+class TestTwoPointTwoEntry(unittest.TestCase):
+    """PLAN-2.2 F3: the CHANGELOG entry for the Antigravity discovery-parity
+    cycle. Same shape as TestTwoPointOneEntry — dated, nothing orphaned under
+    Unreleased, and the entry's content actually names what shipped, so a
+    reader upgrading does not have to read the diff to find out."""
+
+    def setUp(self):
+        with open(CHANGELOG_PATH, "r", encoding="utf-8") as f:
+            self.text = f.read()
+        match = re.search(
+            r"^## \[2\.2\.0\].*?(?=^## \[|\Z)",
+            self.text, re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(match, "CHANGELOG.md has no [2.2.0] entry")
+        self.section = match.group(0)
+
+    def test_the_entry_is_dated(self):
+        self.assertRegex(self.section, r"^## \[2\.2\.0\] - \d{4}-\d{2}-\d{2}")
+
+    def test_nothing_is_left_under_unreleased(self):
+        match = re.search(
+            r"^## \[Unreleased\](.*?)(?=^## \[|\Z)",
+            self.text, re.MULTILINE | re.DOTALL,
+        )
+        if match:
+            self.assertEqual(
+                match.group(1).strip(), "",
+                "the Unreleased section still carries entries that shipped in 2.2.0",
+            )
+
+    def test_it_announces_the_antigravity_discovery_skill(self):
+        """The headline of this cycle: dogfooding found Antigravity never
+        raised the protocol in a fresh project, because it only got the
+        enforcement hook, never anything discoverable."""
+        self.assertIn("skill", self.section.lower())
+        self.assertIn("Antigravity", self.section)
+
+    def test_it_records_the_agy_detection_fix(self):
+        self.assertIn("agy", self.section)
+
+    def test_it_records_the_install_docs_fix(self):
+        self.assertIn("uv tool install", self.section)
+
+    def test_it_records_verify_completion(self):
+        self.assertIn("VERIFY.md", self.section)
 
 
 if __name__ == "__main__":

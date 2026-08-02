@@ -25,12 +25,15 @@ Confirm the files land where the tests say they should:
 respectively, plus the merged permission config
 (`.claude/settings.json`, `opencode.json`).
 
-### 2. The command / rule is visible to the host
+### 2. The entry point is discovered, not just installed
 
 - **Claude Code**: `/` menu lists `cg-new` and `cg-continue`.
 - **OpenCode**: `/help` lists `cg-new` and `cg-continue`.
-- **Antigravity**: `/skills` (or the equivalent surface) shows the rule
-  loaded, confirmed with `agy inspect` if available.
+- **Antigravity**: there is no `agy inspect` or equivalent command to check
+  instead. Open a **new** session — rules and skills load at session start,
+  so an already-open one will not see anything just written — give it a
+  multi-step coding task, and watch whether it invokes `cg` on its own,
+  unprompted. That behavior, not any command's output, is the verification.
 
 ### 3. `/cg-new demo` drives `cg`, not improvisation
 
@@ -54,9 +57,9 @@ intercepts it before it runs:
 
 - **Claude Code**: the `ask` permission prompt appears.
 - **OpenCode**: the `ask` permission prompt appears.
-- **Antigravity**: either the `--with-antigravity-hook` deny fires, or (if
-  not installed) the CLI's default `request-review` mode prompts before the
-  command runs.
+- **Antigravity**: the deny hook `cg setup --host antigravity` installs by
+  default fires. If that machine was set up with `--no-hooks`, the CLI's
+  default `request-review` mode prompts before the command runs instead.
 
 ### 6. Headless, where the host has one
 
@@ -73,8 +76,6 @@ version, host version, and date — this checklist decays the moment either
 side changes its config schema, so a pass from six months ago is not a pass
 today.
 
-- [ ] Claude Code — verified by: __________ on: __________
-- [ ] OpenCode — verified by: __________ on: __________
-- [ ] Antigravity — verified by: __________ on: __________ (may remain
-      pending per PLAN.md F6 acceptance criterion 4; record it as such
-      rather than leaving it silently unchecked)
+- [x] Claude Code — verified by: fdomerlo on: 2026-08-02
+- [x] OpenCode — verified by: fdomerlo on: 2026-08-02
+- [x] Antigravity — verified by: fdomerlo on: 2026-08-02

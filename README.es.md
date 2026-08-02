@@ -66,9 +66,19 @@ nada acá es un resumen ilustrativo.
 Dos líneas, una vez por máquina:
 
 ```bash
-pip install context-guard-cli
+uv tool install context-guard-cli
 cg setup
 ```
+
+¿No tenés `uv`? `pipx install context-guard-cli` hace lo mismo. Ambos
+instalan en un entorno aislado y dejan `cg` en el PATH global — que es el
+punto, porque `cg setup` configura tu máquina una vez, no una vez por
+proyecto. `pip install context-guard-cli` también funciona, como alternativa
+para una instalación de Python simple sin `uv`/`pipx` disponible. **No uses
+`uv pip install context-guard-cli`**: eso instala en el venv que esté activo
+en ese momento — el de un proyecto puntual, si estás parado adentro de
+uno — no en la máquina, lo que anula en silencio el sentido de un `cg setup`
+global.
 
 `cg setup` detecta Claude Code, OpenCode y Antigravity, instala los slash
 commands, y deja `cg approve` detrás del permission prompt de cada uno — ver
@@ -90,6 +100,23 @@ git clone https://github.com/fdomerlo/context-guard.git
 cd context-guard && uv venv && uv pip install -e ".[dev]"
 git config core.hooksPath .githooks   # activa el gate de pre-commit de más abajo
 ```
+
+## Actualizar
+
+```bash
+uv tool upgrade context-guard-cli && cg setup
+```
+
+El segundo comando no es opcional. `cg setup` copia los comandos, skills y
+snippets de permisos dentro de la configuración de tus hosts; actualizar el
+paquete no toca esas copias, así que las correcciones de adapters de una
+versión nueva recién llegan a la máquina cuando se vuelve a correr
+`cg setup`. Es idempotente — se puede correr las veces que quieras.
+
+Las fases ya materializadas en un proyecto (`.context-guard/phases/`) nunca
+se sobrescriben, por diseño: cada proyecto conserva las fases con las que
+empezó, incluidas tus ediciones. Borrá el archivo de fase y corré `cg new`
+para traer la versión actual.
 
 ## Cómo funciona
 
