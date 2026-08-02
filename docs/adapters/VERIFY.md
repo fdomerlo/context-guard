@@ -25,12 +25,15 @@ Confirm the files land where the tests say they should:
 respectively, plus the merged permission config
 (`.claude/settings.json`, `opencode.json`).
 
-### 2. The command / rule is visible to the host
+### 2. The entry point is discovered, not just installed
 
 - **Claude Code**: `/` menu lists `cg-new` and `cg-continue`.
 - **OpenCode**: `/help` lists `cg-new` and `cg-continue`.
-- **Antigravity**: `/skills` (or the equivalent surface) shows the rule
-  loaded, confirmed with `agy inspect` if available.
+- **Antigravity**: there is no `agy inspect` or equivalent command to check
+  instead. Open a **new** session — rules and skills load at session start,
+  so an already-open one will not see anything just written — give it a
+  multi-step coding task, and watch whether it invokes `cg` on its own,
+  unprompted. That behavior, not any command's output, is the verification.
 
 ### 3. `/cg-new demo` drives `cg`, not improvisation
 
