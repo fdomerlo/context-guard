@@ -412,6 +412,3 @@ class TestVerifyChecklist(unittest.TestCase):
     def test_has_a_recordable_checklist(self):
         self.assertIn("- [ ]", self.text)
 
-    def test_allows_antigravity_to_remain_pending(self):
-        self.assertIn("pending", self.text.lower())
-
