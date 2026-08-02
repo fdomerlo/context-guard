@@ -215,6 +215,50 @@ class TestDetection(SetupCase):
         self.assertTrue(os.path.exists(self.home_path(".claude", "commands", "cg-new.md")))
 
 
+class TestAntigravityDetectionMatchesTheRealBinary(SetupCase):
+    """PLAN-2.2 F2 point 1. The bug behind this: the real Antigravity CLI
+    binary is `agy` — confirmed on the machine that filed the finding
+    (`which agy` resolves; `which antigravity` also resolves, but to an
+    unrelated `/usr/local/bin/antigravity`). The old check named the wrong
+    binary, so `--host all` detection depended entirely on `~/.gemini`
+    already existing, or on a same-named-by-luck binary that is not the
+    actual tool.
+    """
+
+    def test_agy_on_path_alone_is_detected(self):
+        """The real RED case: no `~/.gemini`, no `antigravity` binary — only
+        the actual CLI's actual name on PATH. Fails against the old check,
+        which never looked for `agy`."""
+        self.fake_binary("agy")
+        self.setup(host="all")
+        self.assertTrue(os.path.exists(self.home_path(".gemini", "config", "hooks.json")),
+                        "agy on PATH did not trigger antigravity detection")
+
+    def test_the_old_antigravity_binary_name_still_works(self):
+        """Not narrowed: `agy` is added, `antigravity` is kept."""
+        self.fake_binary("antigravity")
+        self.setup(host="all")
+        self.assertTrue(os.path.exists(self.home_path(".gemini", "config", "hooks.json")))
+
+    def test_the_antigravity_cli_state_dir_is_a_detection_signal(self):
+        """Pinning, not a regression test: `~/.gemini/antigravity-cli` is a
+        subdirectory of `~/.gemini`, so its presence already implied
+        `os.path.isdir(~/.gemini)` under the old check too — this does not
+        change behaviour, it documents the stronger, more specific signal the
+        plan asks to add (the real CLI's own state directory, confirmed on
+        the machine that filed the finding: log/, brain/, settings.json all
+        live there) rather than the bare parent that anything gemini-related
+        could have created.
+        """
+        os.makedirs(self.home_path(".gemini", "antigravity-cli"), exist_ok=True)
+        self.setup(host="all")
+        self.assertTrue(os.path.exists(self.home_path(".gemini", "config", "hooks.json")))
+
+    def test_nothing_present_is_not_detected(self):
+        self.setup(host="all")
+        self.assertFalse(os.path.exists(self.home_path(".gemini", "config", "hooks.json")))
+
+
 class TestIdempotency(SetupCase):
     """F2 point 1: "idempotente [...] misma garantía verificada en F6 de 2.0:
     segunda corrida = diff vacío"."""

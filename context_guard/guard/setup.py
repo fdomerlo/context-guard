@@ -390,7 +390,17 @@ def _detected(host, home):
         return (os.path.isdir(os.path.join(home, ".config", "opencode"))
                 or _on_path("opencode"))
     if host == "antigravity":
-        return os.path.isdir(os.path.join(home, ".gemini")) or _on_path("antigravity")
+        # `agy` is the real CLI binary — confirmed on a live install
+        # (PLAN-2.2 F2.1): `antigravity` also resolves on PATH there, but to
+        # an unrelated program, so it is kept rather than trusted alone.
+        # `~/.gemini/antigravity-cli` is the CLI's own state directory (log/,
+        # brain/, settings.json all live under it there), a stronger signal
+        # than the bare `~/.gemini` parent that anything gemini-related
+        # could have created — kept alongside it, not instead of it.
+        return (os.path.isdir(os.path.join(home, ".gemini"))
+                or os.path.isdir(os.path.join(home, ".gemini", "antigravity-cli"))
+                or _on_path("antigravity")
+                or _on_path("agy"))
     return False
 
 
