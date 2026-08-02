@@ -543,8 +543,7 @@ class SkillCase(SetupCase):
     """
 
     def skill_path(self):
-        return self.home_path(".gemini", "config", "skills",
-                              "context-guard", "SKILL.md")
+        return self.home_path(".gemini", "antigravity-cli", "skills", "context-guard", "SKILL.md")
 
     def skill_text(self):
         with open(self.skill_path(), "r", encoding="utf-8") as f:
@@ -595,7 +594,7 @@ class TestAntigravityGetsADiscoverableEntryPoint(SkillCase):
 
     def test_the_skill_is_listed_as_touched(self):
         res = self.setup(host="antigravity")
-        self.assertIn(".gemini/config/skills/context-guard/SKILL.md", res.message)
+        self.assertIn(".gemini/antigravity-cli/skills/context-guard/SKILL.md", res.message)
 
     def test_a_second_run_rewrites_it_byte_identically(self):
         self.setup(host="antigravity")
@@ -743,7 +742,7 @@ class TestEveryHostGetsADiscoveryEntryPoint(SetupCase):
     GLOBAL_DISCOVERY = {
         "claude": ".claude/commands/cg-new.md",
         "opencode": ".config/opencode/commands/cg-new.md",
-        "antigravity": ".gemini/config/skills/context-guard/SKILL.md",
+        "antigravity": ".gemini/antigravity-cli/skills/context-guard/SKILL.md",
     }
 
     PROJECT_DISCOVERY = {

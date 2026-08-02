@@ -102,6 +102,22 @@ cd context-guard && uv venv && uv pip install -e ".[dev]"
 git config core.hooksPath .githooks   # activates the pre-commit gate below
 ```
 
+## Upgrading
+
+```bash
+uv tool upgrade context-guard-cli && cg setup
+```
+
+The second command is not optional. `cg setup` copies commands, skills and
+permission snippets into your host configs; upgrading the package does not
+touch those copies, so a new version's adapter fixes only reach a machine
+once `cg setup` runs again. It is idempotent — safe to run any time.
+
+Phase files already materialised in a project (`.context-guard/phases/`)
+are never overwritten, by design: a project keeps the phases it was started
+with, including your edits. Delete a phase file and run `cg new` to pull the
+current version.
+
 ## How it works
 
 ```

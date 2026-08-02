@@ -238,7 +238,7 @@ json.dump(out, sys.stdout)
                         # three hosts must each end up with a *discoverable*
                         # entry point. Antigravity's is this skill; the hook
                         # above is enforcement, which nobody discovers.
-                        ".gemini/config/skills/context-guard/SKILL.md"):
+                        ".gemini/antigravity-cli/skills/context-guard/SKILL.md"):
             with self.subTest(path=relpath):
                 self.assertTrue(os.path.exists(os.path.join(home, relpath)),
                                 f"{relpath} was not configured by cg setup")

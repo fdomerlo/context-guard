@@ -15,7 +15,7 @@ enforcement hook, nothing discoverable.
 ### Added
 
 - A discovery skill for Antigravity, installed by `cg setup` at
-  `~/.gemini/config/skills/context-guard/SKILL.md` alongside the existing
+  `~/.gemini/antigravity-cli/skills/context-guard/SKILL.md` alongside the existing
   deny hook. Antigravity loads skills by progressive disclosure — only the
   name and description sit in context until the model picks it — which is
   what makes this affordable without repeating 2.0's bug 6.0.4

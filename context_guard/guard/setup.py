@@ -214,15 +214,12 @@ def _install_opencode(root, with_mcp, global_scope):
     return touched
 
 
-# Antigravity's global customization root. Confirmed against a real install
-# (PLAN-2.2 F3.0): the CLI's own bundled `agy-customizations` skill documents
-# `~/.gemini/config/` as the machine-local discovery location, and it is
-# already where hooks.json, mcp_config.json and plugins/ live. Not
-# `~/.gemini/antigravity-cli/`, which is the CLI's own state directory — its
-# `builtin/` subtree carries a checksum the updater rewrites, so a skill
-# installed there would be reverted by the next CLI update.
+# The path was confirmed against Antigravity CLI 1.1.9 via the /skills panel,
+# which lists ~/.gemini/antigravity-cli/skills/ as the user's global location;
+# builtin/ is the subtree with checksum, a sibling of this one, not its parent.
+# ANTIGRAVITY_GLOBAL_ROOT remains as is: hooks.json does reside in .gemini/config/.
 ANTIGRAVITY_GLOBAL_ROOT = (".gemini", "config")
-ANTIGRAVITY_SKILL_REL = ANTIGRAVITY_GLOBAL_ROOT + ("skills", "context-guard", "SKILL.md")
+ANTIGRAVITY_SKILL_REL = (".gemini", "antigravity-cli", "skills", "context-guard", "SKILL.md")
 
 # Both artifacts we write into a user's tree as whole files carry this marker,
 # so a later run can tell its own output from a file of the same name the user

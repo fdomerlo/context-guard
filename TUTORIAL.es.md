@@ -84,6 +84,29 @@ necesitás descargar este repositorio ni copiar archivos a mano.
 
 ---
 
+## 3.1. Cómo actualizar
+
+Cuando salga una versión nueva, dos comandos en uno:
+
+```bash
+uv tool upgrade context-guard-cli && cg setup
+```
+
+*(Con pipx: `pipx upgrade context-guard-cli && cg setup`.)*
+
+**Por qué son dos y no uno:** el primero actualiza el programa; el segundo
+vuelve a copiar los comandos y la configuración dentro de tu asistente. Si
+hacés solo el primero, tu asistente sigue usando las instrucciones viejas y
+las mejoras de la versión nueva no aparecen. Correr `cg setup` de más nunca
+rompe nada.
+
+**Tus proyectos viejos siguen como estaban.** Las guías de fase que se
+copiaron dentro de cada proyecto no se pisan al actualizar — a propósito,
+para no borrar cambios que hayas hecho. Los proyectos nuevos arrancan con
+las guías actualizadas.
+
+---
+
 ## 4. El punto de aprobación: tu único trabajo obligatorio
 
 Acá está el corazón del sistema, y es importante que lo entiendas antes del primer uso.
@@ -186,6 +209,7 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 | Ver el avance | `cg status` | — |
 | Retomar tras un corte | `/cg-continue` | Continúa donde quedó |
 | Destrabar | `cg doctor --fix` | — |
+| Actualizar | `uv tool upgrade context-guard-cli && cg setup` | — |
 
 Instalación (una vez): `uv tool install context-guard-cli` y luego `cg setup` una vez por máquina.
 
