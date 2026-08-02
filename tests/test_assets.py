@@ -39,6 +39,7 @@ EXPECTED_DATA_FILES = {
     "hosts/opencode/permissions.snippet.json",
     "hosts/opencode/mcp.snippet.json",
     "hosts/antigravity/rules/context-guard.md",
+    "hosts/antigravity/skills/context-guard/SKILL.md",
     "hosts/antigravity/hooks.snippet.json",
 }
 
@@ -58,6 +59,7 @@ EXPECTED_HOST_FILES = {
     },
     "antigravity": {
         "rules/context-guard.md",
+        "skills/context-guard/SKILL.md",
         "hooks.snippet.json",
     },
 }
@@ -221,6 +223,75 @@ class TestNothingIsDuplicatedInTheRepoTree(unittest.TestCase):
             "artifacts and human docs both left adapters/ in F1; F2 removed "
             "the installer that was the last thing in there",
         )
+
+
+class TestTheAntigravitySkillIsShapedTheWayTheHostReadsIt(unittest.TestCase):
+    """PLAN-2.2 F1 point 1. The skill is the discovery entry point Antigravity
+    was missing, and it only works if the host can parse it and the model
+    decides to activate it.
+
+    Both halves are asserted here because both are silent when wrong:
+    Antigravity loads skills by progressive disclosure — only `name` and
+    `description` are injected into the context, and the full body is read
+    only if the model picks the skill off that description. A skill with a
+    vague description installs cleanly, breaks nothing, and never fires.
+    """
+
+    SKILL = os.path.join(DATA_DIR, "hosts", "antigravity", "skills",
+                         "context-guard", "SKILL.md")
+
+    def setUp(self):
+        with open(self.SKILL, encoding="utf-8") as f:
+            self.text = f.read()
+        self.assertTrue(self.text.startswith("---\n"),
+                        "the host requires YAML frontmatter as the very first thing")
+        _, self.frontmatter, self.body = self.text.split("---\n", 2)
+
+    def test_frontmatter_declares_name_and_description(self):
+        self.assertRegex(self.frontmatter,
+                         re.compile(r"^name:[ \t]*context-guard[ \t]*$", re.MULTILINE))
+        self.assertRegex(self.frontmatter, re.compile(r"^description:", re.MULTILINE))
+
+    def test_the_description_names_the_concrete_triggers(self):
+        """"la description decide si el agente la activa: debe nombrar los
+        disparadores concretos". Read literally, because a description that
+        only says what the tool *is* gives the model nothing to match a user's
+        prompt against."""
+        for trigger in ("multi-step", "resume", "session", ".context-guard/"):
+            with self.subTest(trigger=trigger):
+                self.assertIn(trigger, self.frontmatter)
+
+    def test_the_body_stays_short(self):
+        """"cuerpo corto (<60 líneas) [...] El contenido pesado sigue viviendo
+        en las fases, no acá." A skill that duplicates the phase files becomes
+        the second source of truth that drifts."""
+        self.assertLess(len(self.body.splitlines()), 60)
+
+    def test_the_body_carries_the_operative_commands(self):
+        for command in ("cg new", "cg status", "cg next-task", "cg commit"):
+            with self.subTest(command=command):
+                self.assertIn(command, self.body)
+
+    def test_the_body_sends_the_agent_to_the_phase_files(self):
+        """The point of keeping it short: the body has to say where the real
+        instructions are, or the truncation is just lost information."""
+        self.assertIn(".context-guard/phases/", self.body)
+
+    def test_the_body_marks_approve_as_human_only(self):
+        self.assertIn("cg approve", self.body)
+        self.assertRegex(self.body, r"(?i)human[- ]only")
+
+    def test_the_body_names_the_three_phases(self):
+        for phase in ("PLAN", "EXECUTE", "VERIFY"):
+            with self.subTest(phase=phase):
+                self.assertIn(phase, self.body)
+
+    def test_the_body_carries_the_ownership_marker(self):
+        """F1 point 4: the no-clobber check distinguishes our file from a
+        user's own skill of the same name by this marker. Without it in the
+        shipped copy, `cg setup` would refuse to refresh its own file."""
+        self.assertIn("<!-- context-guard:begin -->", self.body)
+        self.assertIn("<!-- context-guard:end -->", self.body)
 
 
 class TestHumanDocsMovedToDocs(unittest.TestCase):

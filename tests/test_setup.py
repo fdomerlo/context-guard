@@ -482,6 +482,240 @@ class TestOneHostFailingDoesNotAbortTheOthers(HooksCase):
         self.assertNotIn("hooks.json", touched)
 
 
+class SkillCase(SetupCase):
+    """PLAN-2.2 F1: the Antigravity discovery skill.
+
+    The path is not the one the plan guessed. F3.0 resolved it against the
+    real machine: `~/.gemini/config/` is Antigravity's global customization
+    root — the CLI's own bundled `agy-customizations` skill documents it as
+    "Global Configuration (Machine-Local)", and it is already where
+    `hooks.json`, `mcp_config.json` and `plugins/` live. Skills are discovered
+    at `<root>/skills/<name>/SKILL.md`.
+
+    The plan's tentative `~/.gemini/antigravity-cli/skills/` is the wrong tree
+    twice over: it is not a customization root, and `antigravity-cli/builtin/`
+    carries a `.checksum` the updater rewrites, so anything installed under it
+    would be silently reverted on the next CLI update.
+    """
+
+    def skill_path(self):
+        return self.home_path(".gemini", "config", "skills",
+                              "context-guard", "SKILL.md")
+
+    def skill_text(self):
+        with open(self.skill_path(), "r", encoding="utf-8") as f:
+            return f.read()
+
+    def plant_skill(self, raw):
+        os.makedirs(os.path.dirname(self.skill_path()), exist_ok=True)
+        with open(self.skill_path(), "w", encoding="utf-8") as f:
+            f.write(raw)
+        return raw
+
+
+class TestAntigravityGetsADiscoverableEntryPoint(SkillCase):
+    """F1 points 1-2. The bug this closes, from real dogfooding: `cg setup`
+    gave Antigravity the deny hook and nothing else — enforcement with no
+    discovery. The agent had no way to learn `cg` exists, and the one artifact
+    that would have taught it was written by `cg new`, which nobody runs until
+    they already know about `cg`."""
+
+    def test_global_setup_installs_the_skill(self):
+        res = self.setup(host="antigravity")
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        self.assertTrue(os.path.exists(self.skill_path()),
+                        "no skill installed — Antigravity still has no entry point")
+
+    def test_the_skill_is_the_embedded_copy_verbatim(self):
+        self.setup(host="antigravity")
+        for relpath, text in assets.iter_host_files("antigravity"):
+            if relpath == "skills/context-guard/SKILL.md":
+                self.assertEqual(self.skill_text(), text)
+                return
+        self.fail("the embedded skill is missing from the packaged data")
+
+    def test_the_skill_ships_alongside_the_hook_not_instead_of_it(self):
+        self.setup(host="antigravity")
+        self.assertTrue(os.path.exists(self.skill_path()))
+        self.assertTrue(os.path.exists(
+            self.home_path(".gemini", "config", "hooks.json")))
+
+    def test_no_hooks_still_installs_the_skill(self):
+        """`--no-hooks` declines the deny hook. Discovery is not what is being
+        declined — a user who wants no enforcement still wants their agent to
+        know the tool exists."""
+        self.setup(host="antigravity", no_hooks=True)
+        self.assertTrue(os.path.exists(self.skill_path()))
+        self.assertFalse(os.path.exists(
+            self.home_path(".gemini", "config", "hooks.json")))
+
+    def test_the_skill_is_listed_as_touched(self):
+        res = self.setup(host="antigravity")
+        self.assertIn(".gemini/config/skills/context-guard/SKILL.md", res.message)
+
+    def test_a_second_run_rewrites_it_byte_identically(self):
+        self.setup(host="antigravity")
+        first = self.skill_text()
+        self.setup(host="antigravity")
+        self.assertEqual(self.skill_text(), first)
+
+    def test_project_scope_does_not_write_the_global_skill(self):
+        """The negative mirror of the scope split, kept for the same reason
+        every other scope test carries one: a half-finished implementation
+        that writes to both places passes every positive assertion."""
+        self.setup(host="antigravity", project=self.project)
+        self.assertEqual(tree_snapshot(self.home), {})
+
+    def test_setup_never_touches_gemini_md(self):
+        """F1 point 5, pinned as a test rather than left as a comment. Writing
+        the protocol into `~/.gemini/GEMINI.md` was bug 6.0.4 of 2.0: that file
+        is loaded unconditionally into every project on the machine, so it
+        contaminated repositories that had never heard of context-guard. The
+        skill exists precisely because progressive disclosure gives discovery
+        without that cost."""
+        self.detect_all_three()
+        self.setup(with_mcp=True)
+        for rel in tree_snapshot(self.home):
+            self.assertNotIn("GEMINI.md", rel,
+                             "global rule contamination — this was bug 6.0.4")
+
+
+class TestAForeignSkillIsNeverClobbered(SkillCase):
+    """F1 point 4: "si el archivo de skill existe y no lo escribimos nosotros
+    (sin marcador), no se pisa".
+
+    Same principle as the hooks merge, applied to a file we own by name only.
+    `context-guard` is a plausible name for a skill a user wrote themselves,
+    and a global install that silently replaces it destroys work the installer
+    has no way to reconstruct.
+    """
+
+    FOREIGN = "---\nname: context-guard\ndescription: my own thing\n---\n\nmine.\n"
+
+    def test_a_skill_without_our_marker_survives(self):
+        self.plant_skill(self.FOREIGN)
+        self.setup(host="antigravity")
+        self.assertEqual(self.skill_text(), self.FOREIGN)
+
+    def test_the_skip_is_reported_with_the_path(self):
+        self.plant_skill(self.FOREIGN)
+        res = self.setup(host="antigravity")
+        self.assertIn("SKIP|SKILL_EXISTS", res.message)
+        self.assertIn(self.skill_path(), res.message)
+
+    def test_the_skipped_file_is_not_listed_as_touched(self):
+        """A file we deliberately left alone must not appear in the record of
+        what this run wrote — that list is the only uninstall instructions
+        there are."""
+        self.plant_skill(self.FOREIGN)
+        res = self.setup(host="antigravity")
+        touched = res.message.split("Files touched:", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn("SKILL.md", touched)
+
+    def test_the_hook_is_still_installed(self):
+        """One artifact declining to install must not take the other down with
+        it, for the same reason a broken hooks.json does not abort Claude Code."""
+        self.plant_skill(self.FOREIGN)
+        self.setup(host="antigravity")
+        self.assertTrue(os.path.exists(
+            self.home_path(".gemini", "config", "hooks.json")))
+
+    def test_our_own_skill_is_refreshed_rather_than_skipped(self):
+        """The other half of the marker check, and the one that makes it
+        useful: a file *we* wrote must be updatable, or every user stays on
+        whichever version of the skill they installed first, forever."""
+        self.setup(host="antigravity")
+        stale = self.skill_text().replace("cg status", "cg stale-command")
+        self.plant_skill(stale)
+
+        self.setup(host="antigravity")
+
+        self.assertNotIn("cg stale-command", self.skill_text())
+        self.assertIn("cg status", self.skill_text())
+
+
+class TestProjectScopeInstallsTheRule(SetupCase):
+    """F1 point 3. `cg setup --project <dir>` writing the workspace rule is
+    what makes the project path independent of `cg new` — a team can commit
+    the rule before the first change exists."""
+
+    def rule_path(self):
+        return self.project_path(".agents", "rules", "context-guard.md")
+
+    def test_the_rule_lands_in_the_project(self):
+        res = self.setup(host="antigravity", project=self.project)
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        self.assertTrue(os.path.exists(self.rule_path()))
+
+    def test_the_rule_is_the_embedded_copy_verbatim(self):
+        self.setup(host="antigravity", project=self.project)
+        with open(self.rule_path(), "r", encoding="utf-8") as f:
+            written = f.read()
+        for relpath, text in assets.iter_host_files("antigravity"):
+            if relpath == "rules/context-guard.md":
+                self.assertEqual(written, text)
+                return
+        self.fail("the embedded rule is missing from the packaged data")
+
+    def test_cg_new_still_materialises_it_independently(self):
+        """F1 point 3: "cg new conserva su materialización". The two paths are
+        independent on purpose — a global `cg setup` never visits the project,
+        so `cg new` has to be able to write the rule on its own."""
+        os.makedirs(self.home_path(".gemini"), exist_ok=True)
+        with mock.patch.dict(os.environ, self.env()):
+            cmd_new(self.project, "demo")
+        self.assertTrue(os.path.exists(self.rule_path()))
+
+
+class TestEveryHostGetsADiscoveryEntryPoint(SetupCase):
+    """F1's acceptance criterion as a single parity assertion: "los tres hosts
+    exponen punto de entrada descubrible".
+
+    The per-host tests above each prove their own host works. None of them
+    would fail if a fourth host were added with enforcement only, or if a
+    refactor quietly dropped one host's commands — which is exactly the state
+    2.1 shipped in, with every Antigravity test passing.
+
+    "Discoverable" means an artifact the host surfaces to the agent by itself:
+    a slash command, a skill, a rule. A permission entry or a deny hook is
+    enforcement — it fires once the agent already knows what to type.
+    """
+
+    GLOBAL_DISCOVERY = {
+        "claude": ".claude/commands/cg-new.md",
+        "opencode": ".config/opencode/commands/cg-new.md",
+        "antigravity": ".gemini/config/skills/context-guard/SKILL.md",
+    }
+
+    PROJECT_DISCOVERY = {
+        "claude": ".claude/commands/cg-new.md",
+        "opencode": ".opencode/commands/cg-new.md",
+        "antigravity": ".agents/rules/context-guard.md",
+    }
+
+    def test_a_global_install_leaves_every_host_discoverable(self):
+        self.detect_all_three()
+        res = self.setup()
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        for host, relpath in self.GLOBAL_DISCOVERY.items():
+            with self.subTest(host=host):
+                self.assertTrue(
+                    os.path.exists(self.home_path(*relpath.split("/"))),
+                    f"{host} got no discoverable entry point ({relpath} missing)")
+
+    def test_a_project_install_leaves_every_host_discoverable(self):
+        # Detection reads HOME even for a project install — it answers "is
+        # this host on the machine", not "is it in this repository".
+        self.detect_all_three()
+        res = self.setup(host="all", project=self.project)
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        for host, relpath in self.PROJECT_DISCOVERY.items():
+            with self.subTest(host=host):
+                self.assertTrue(
+                    os.path.exists(self.project_path(*relpath.split("/"))),
+                    f"{host} got no discoverable entry point ({relpath} missing)")
+
+
 class TestNoHooksEscapeHatch(HooksCase):
     """Pre-release audit, item 2. Installing the deny hook by default is
     blessed — `cg setup` is already a consented act of global configuration,

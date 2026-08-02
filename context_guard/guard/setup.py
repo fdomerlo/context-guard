@@ -214,6 +214,21 @@ def _install_opencode(root, with_mcp, global_scope):
     return touched
 
 
+# Antigravity's global customization root. Confirmed against a real install
+# (PLAN-2.2 F3.0): the CLI's own bundled `agy-customizations` skill documents
+# `~/.gemini/config/` as the machine-local discovery location, and it is
+# already where hooks.json, mcp_config.json and plugins/ live. Not
+# `~/.gemini/antigravity-cli/`, which is the CLI's own state directory — its
+# `builtin/` subtree carries a checksum the updater rewrites, so a skill
+# installed there would be reverted by the next CLI update.
+ANTIGRAVITY_GLOBAL_ROOT = (".gemini", "config")
+ANTIGRAVITY_SKILL_REL = ANTIGRAVITY_GLOBAL_ROOT + ("skills", "context-guard", "SKILL.md")
+
+# Both artifacts we write into a user's tree as whole files carry this marker,
+# so a later run can tell its own output from a file of the same name the user
+# wrote themselves.
+OWNERSHIP_MARKER = "<!-- context-guard:begin -->"
+
 HOOKS_MANUAL_FIX = ("left untouched; add the deny hook manually "
                     "(see docs/adapters/antigravity/PERMISSIONS.md)")
 
@@ -248,36 +263,83 @@ def _hooks_shape_problem(cfg):
     return None
 
 
+def _embedded_antigravity_file(relpath):
+    for name, text in iter_host_files("antigravity"):
+        if name == relpath:
+            return text
+    return None
+
+
+def _write_owned(path, text):
+    """Write one of our marked files, unless something else already owns it.
+
+    Returns `(written, skip)`. A file carrying OWNERSHIP_MARKER is one of ours
+    and is refreshed, which is what lets a `cg` upgrade actually reach the
+    artifacts an earlier version installed. Anything else is left exactly as
+    it is: `context-guard` is a plausible name for a skill or a rule the user
+    wrote themselves, and this code cannot reconstruct what it would destroy.
+
+    Not a failure. A name collision means the user has a file here on purpose;
+    it says so and moves on, rather than deciding the machine is broken.
+    """
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            if OWNERSHIP_MARKER not in f.read():
+                return False, f"SKIP|SKILL_EXISTS|{path}|not written by context-guard, left as is"
+    _write_text(path, text)
+    return True, None
+
+
 def _install_antigravity(root, global_scope, no_hooks=False):
-    """Global scope installs the deny hook; project scope installs the rule.
+    """Global scope installs the discovery skill and the deny hook; project
+    scope installs the workspace rule.
 
-    The split follows what each artifact is for. The hook lives in user
-    config by definition, so it has no meaning in a project install; the
-    workspace rule travels with the repository, and for the global case
-    `cg new` materialises it per project instead.
+    The split follows what each artifact is for. The hook lives in user config
+    by definition, so it has no meaning in a project install; the workspace
+    rule travels with the repository. Until 2.2 the global case installed the
+    hook alone — enforcement with nothing to discover it by — and the only
+    bootstrap artifact was written by `cg new`, which nobody runs before they
+    know `cg` exists. The skill closes that loop: Antigravity loads it by
+    progressive disclosure, so it costs nothing until the model picks it.
 
-    Returns `(touched, failure)`. Unlike the other hosts this one merges into
-    a file it did not create and cannot fully predict, so it needs a way to
-    decline without taking the whole run down with it.
+    Returns `(touched, failure, skips)`. Unlike the other hosts this one
+    writes into files it did not create and cannot fully predict, so it needs
+    both a way to fail without taking the whole run down and a way to decline
+    a single artifact without failing at all.
     """
     if not global_scope:
-        for relpath, text in iter_host_files("antigravity"):
-            if relpath != "rules/context-guard.md":
-                continue
-            _write_text(os.path.join(root, ".agents", "rules", "context-guard.md"), text)
-            return [".agents/rules/context-guard.md"], None
-        return [], None
+        text = _embedded_antigravity_file("rules/context-guard.md")
+        if text is None:
+            return [], None, []
+        rule_rel = os.path.join(".agents", "rules", "context-guard.md")
+        _write_text(os.path.join(root, rule_rel), text)
+        return [rule_rel.replace(os.sep, "/")], None, []
 
+    touched = []
+    skips = []
+
+    skill_text = _embedded_antigravity_file("skills/context-guard/SKILL.md")
+    if skill_text is not None:
+        skill_rel = os.path.join(*ANTIGRAVITY_SKILL_REL)
+        written, skip = _write_owned(os.path.join(root, skill_rel), skill_text)
+        if written:
+            touched.append(skill_rel.replace(os.sep, "/"))
+        if skip:
+            skips.append(skip)
+
+    # `--no-hooks` declines the enforcement, not the discovery. A user who
+    # does not want the deny hook still wants their agent to know the tool
+    # is there.
     if no_hooks:
-        return [], None
+        return touched, None, skips
 
-    hooks_rel = os.path.join(".gemini", "config", "hooks.json")
+    hooks_rel = os.path.join(*ANTIGRAVITY_GLOBAL_ROOT, "hooks.json")
     hooks_path = os.path.join(root, hooks_rel)
 
     try:
         cfg = _read_json(hooks_path)
     except ConfigCorruptError:
-        return [], f"FAIL|HOOKS_UNPARSEABLE|{hooks_path}|{HOOKS_MANUAL_FIX}"
+        return touched, f"FAIL|HOOKS_UNPARSEABLE|{hooks_path}|{HOOKS_MANUAL_FIX}", skips
     if cfg is None:
         cfg = {}
 
@@ -286,7 +348,9 @@ def _install_antigravity(root, global_scope, no_hooks=False):
         # Reported and left alone rather than normalised. Rewriting a config
         # into the shape this code prefers would discard whatever the user's
         # own tooling put there, and we cannot know what that was for.
-        return [], f"FAIL|HOOKS_UNRECOGNISED|{hooks_path}|{HOOKS_MANUAL_FIX} ({problem})"
+        return (touched,
+                f"FAIL|HOOKS_UNRECOGNISED|{hooks_path}|{HOOKS_MANUAL_FIX} ({problem})",
+                skips)
 
     snippet = json.loads(read_snippet("antigravity", "hooks"))
     new_hook = snippet["hooks"]["PreToolUse"][0]
@@ -301,7 +365,8 @@ def _install_antigravity(root, global_scope, no_hooks=False):
     if not already:
         pre_tool_use.append(new_hook)
     _write_json(hooks_path, cfg)
-    return [f"{hooks_rel.replace(os.sep, '/')} {HOOKS_NOTE}"], None
+    touched.append(f"{hooks_rel.replace(os.sep, '/')} {HOOKS_NOTE}")
+    return touched, None, skips
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +427,7 @@ def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
     lines = [f"Installing context-guard adapters into {root} ..."]
     touched = []
     failures = []
+    skips = []
 
     for name in selected:
         if name == "claude":
@@ -375,18 +441,21 @@ def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
             # cannot be configured reports and steps aside: letting it abort
             # the run would let one unrelated file on disk decide that the
             # tool does not work on this machine.
-            host_touched, failure = _install_antigravity(root, global_scope, no_hooks)
+            host_touched, failure, host_skips = _install_antigravity(
+                root, global_scope, no_hooks)
             touched += host_touched
+            skips += host_skips
             if failure:
                 failures.append(failure)
                 lines.append("  -> Antigravity: hooks.json left untouched, see below")
             elif not global_scope:
-                lines.append("  -> Antigravity: rule installed")
+                lines.append("  -> Antigravity: workspace rule installed")
             elif no_hooks:
-                lines.append("  -> Antigravity: deny hook skipped (--no-hooks)")
+                lines.append("  -> Antigravity: skill installed, deny hook "
+                             "skipped (--no-hooks)")
             else:
-                lines.append("  -> Antigravity: deny hook merged into "
-                             "~/.gemini/config/hooks.json")
+                lines.append("  -> Antigravity: skill installed, deny hook merged "
+                             "into ~/.gemini/config/hooks.json")
 
     for name in HOST_DIRS:
         if name in selected:
@@ -409,6 +478,15 @@ def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
         lines.extend(f"  {path}" for path in touched)
     else:
         lines.append("  (none)")
+
+    # Listed apart from both the touched files and the failures: nothing was
+    # written, and nothing is wrong. Kept visible anyway, because the user is
+    # otherwise left with a host that installed "successfully" and still has
+    # no entry point.
+    if skips:
+        lines.append("")
+        lines.append("Skipped (a file of ours already exists, written by someone else):")
+        lines.extend(f"  {skip}" for skip in skips)
 
     if failures:
         lines.append("")

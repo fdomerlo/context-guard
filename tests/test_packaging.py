@@ -195,6 +195,14 @@ json.dump(out, sys.stdout)
         self.assertIn("commands/cg-new.md", hosts["claude-code"])
         self.assertIn("rules/context-guard.md", hosts["antigravity"])
 
+    def test_the_antigravity_skill_travels_in_the_wheel(self):
+        """PLAN-2.2 F1: "la skill viaja en el wheel". Called out separately
+        from the set comparison above because this is a nested directory —
+        `skills/context-guard/SKILL.md` — and the failure mode is a build
+        backend that flattens or drops a level nobody thought to check."""
+        hosts = self._probe()["hosts"]
+        self.assertIn("skills/context-guard/SKILL.md", hosts["antigravity"])
+
     # --- F2: "pip install <wheel> && cg setup deja los tres hosts
     # configurados" on a simulated clean machine ---
 
@@ -225,7 +233,12 @@ json.dump(out, sys.stdout)
                         ".claude/settings.json",
                         ".config/opencode/commands/cg-new.md",
                         ".config/opencode/opencode.json",
-                        ".gemini/config/hooks.json"):
+                        ".gemini/config/hooks.json",
+                        # PLAN-2.2 acceptance criterion 2: on a clean HOME the
+                        # three hosts must each end up with a *discoverable*
+                        # entry point. Antigravity's is this skill; the hook
+                        # above is enforcement, which nobody discovers.
+                        ".gemini/config/skills/context-guard/SKILL.md"):
             with self.subTest(path=relpath):
                 self.assertTrue(os.path.exists(os.path.join(home, relpath)),
                                 f"{relpath} was not configured by cg setup")
