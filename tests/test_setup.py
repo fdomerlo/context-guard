@@ -666,6 +666,21 @@ class TestProjectScopeInstallsTheRule(SetupCase):
             cmd_new(self.project, "demo")
         self.assertTrue(os.path.exists(self.rule_path()))
 
+    def test_a_project_rule_the_user_edited_is_not_clobbered(self):
+        """The rule is written by the same code path as the skill and carries
+        the same marker, and `cg new` has always refused to clobber it.
+        `cg setup --project` overwriting a team's edited rule while `cg new`
+        preserves it is the asymmetry; the marker check removes it."""
+        mine = "# my own rule\n"
+        os.makedirs(os.path.dirname(self.rule_path()), exist_ok=True)
+        with open(self.rule_path(), "w", encoding="utf-8") as f:
+            f.write(mine)
+
+        self.setup(host="antigravity", project=self.project)
+
+        with open(self.rule_path(), "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), mine)
+
 
 class TestEveryHostGetsADiscoveryEntryPoint(SetupCase):
     """F1's acceptance criterion as a single parity assertion: "los tres hosts

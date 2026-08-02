@@ -312,8 +312,10 @@ def _install_antigravity(root, global_scope, no_hooks=False):
         if text is None:
             return [], None, []
         rule_rel = os.path.join(".agents", "rules", "context-guard.md")
-        _write_text(os.path.join(root, rule_rel), text)
-        return [rule_rel.replace(os.sep, "/")], None, []
+        written, skip = _write_owned(os.path.join(root, rule_rel), text)
+        return ([rule_rel.replace(os.sep, "/")] if written else [],
+                None,
+                [skip] if skip else [])
 
     touched = []
     skips = []
