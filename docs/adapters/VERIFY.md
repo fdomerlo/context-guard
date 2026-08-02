@@ -54,9 +54,9 @@ intercepts it before it runs:
 
 - **Claude Code**: the `ask` permission prompt appears.
 - **OpenCode**: the `ask` permission prompt appears.
-- **Antigravity**: either the `--with-antigravity-hook` deny fires, or (if
-  not installed) the CLI's default `request-review` mode prompts before the
-  command runs.
+- **Antigravity**: the deny hook `cg setup --host antigravity` installs by
+  default fires. If that machine was set up with `--no-hooks`, the CLI's
+  default `request-review` mode prompts before the command runs instead.
 
 ### 6. Headless, where the host has one
 
@@ -75,6 +75,4 @@ today.
 
 - [ ] Claude Code — verified by: __________ on: __________
 - [ ] OpenCode — verified by: __________ on: __________
-- [ ] Antigravity — verified by: __________ on: __________ (may remain
-      pending per PLAN.md F6 acceptance criterion 4; record it as such
-      rather than leaving it silently unchecked)
+- [ ] Antigravity — verified by: __________ on: __________
