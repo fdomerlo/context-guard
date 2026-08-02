@@ -410,5 +410,9 @@ class TestVerifyChecklist(unittest.TestCase):
         self.assertIn("cg approve", self.text)
 
     def test_has_a_recordable_checklist(self):
-        self.assertIn("- [ ]", self.text)
+        """Markdown checkbox syntax, checked or not — this stopped pinning
+        "still unchecked" once PLAN-2.2 F3 actually completed all three
+        rows; the property worth keeping is that the format is recordable
+        at all."""
+        self.assertRegex(self.text, r"- \[[ x]\]")
 

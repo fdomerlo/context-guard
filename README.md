@@ -252,9 +252,7 @@ at `phases/{plan,execute,verify}.md` rather than duplicating them. How to put
 `cg approve` behind each harness's permission prompt is documented in
 [docs/adapters/](docs/adapters/), one `PERMISSIONS.md` per host, alongside the
 manual smoke-test checklist in [docs/adapters/VERIFY.md](docs/adapters/VERIFY.md).
-`cg setup` installs the right one for each detected host. The OpenCode and Antigravity
-adapters are ported from state-guard and covered by static tests only — they
-have not been run against a live host of either.
+`cg setup` installs the right one for each detected host.
 
 ## How this compares
 

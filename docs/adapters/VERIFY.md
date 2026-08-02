@@ -76,6 +76,6 @@ version, host version, and date — this checklist decays the moment either
 side changes its config schema, so a pass from six months ago is not a pass
 today.
 
-- [ ] Claude Code — verified by: __________ on: __________
-- [ ] OpenCode — verified by: __________ on: __________
-- [ ] Antigravity — verified by: __________ on: __________
+- [x] Claude Code — verified by: fdomerlo on: 2026-08-02
+- [x] OpenCode — verified by: fdomerlo on: 2026-08-02
+- [x] Antigravity — verified by: fdomerlo on: 2026-08-02

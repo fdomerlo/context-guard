@@ -6,6 +6,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.2.0] - 2026-08-02
+
+Triggered by real dogfooding: Antigravity never raised the context-guard
+protocol in a fresh project, because `cg setup` only installed its
+enforcement hook, nothing discoverable.
+
+### Added
+
+- A discovery skill for Antigravity, installed by `cg setup` at
+  `~/.gemini/config/skills/context-guard/SKILL.md` alongside the existing
+  deny hook. Antigravity loads skills by progressive disclosure — only the
+  name and description sit in context until the model picks it — which is
+  what makes this affordable without repeating 2.0's bug 6.0.4
+  (`~/.gemini/GEMINI.md` contamination of every project on the machine,
+  which stays permanently out of scope). The skill carries the three-phase
+  DAG, the operative `cg` commands, and marks `cg approve` human-only.
+- `cg setup --project <dir>` now installs the Antigravity workspace rule
+  directly, instead of that artifact only ever being written by `cg new`.
+- A shared ownership-marker check: a skill or rule file not written by
+  context-guard is never overwritten — reported as `SKIP|SKILL_EXISTS|<path>`
+  and left alone, whether hit through `cg setup` or `cg new`.
+
+### Fixed
+
+- Antigravity detection now checks for `agy` — the CLI's actual binary name
+  — and `~/.gemini/antigravity-cli`, its state directory. The prior check
+  named `antigravity`, which resolves on PATH to an unrelated program.
+- `cg setup --project` was overwriting an `.agents/rules/context-guard.md`
+  a team had edited; `cg new` never did. Both paths now honor the same
+  ownership marker.
+
+### Changed
+
+- README.md, README.es.md and TUTORIAL.es.md Install sections lead with
+  `uv tool install context-guard-cli` / `pipx install`, isolated installs
+  that land `cg` on PATH globally — what a once-per-machine `cg setup`
+  assumes. `pip install` remains documented as a fallback. Explicit warning
+  added against `uv pip install context-guard-cli`, which installs into
+  whichever project venv is active rather than the machine, silently
+  defeating a global `cg setup`.
+- `docs/adapters/VERIFY.md`: step 2 no longer checks Antigravity discovery
+  via `agy inspect`, which does not exist as a subcommand — replaced with
+  the actual verification, behavioral: a new session, a multi-step task,
+  and whether the agent invokes `cg` unprompted. Step 5 no longer names
+  `--with-antigravity-hook`, a flag removed in 2.1; the deny hook installs
+  by default now, declined with `--no-hooks`.
+- VERIFY.md is complete for all three hosts — Claude Code, OpenCode and
+  Antigravity — closing the gap the README used to admit openly. The line
+  stating the OpenCode and Antigravity adapters had not been run against a
+  live host is removed; both have been.
+
 ## [2.1.0] - 2026-08-01
 
 ### Added

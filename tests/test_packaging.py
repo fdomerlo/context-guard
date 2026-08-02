@@ -291,9 +291,9 @@ class TestPackagingTestRunsInCI(unittest.TestCase):
         self.assertIn("build", dev_extra.group(1))
 
     def test_ci_runs_on_this_branch(self):
-        """CI triggered only on [main, v2]; the 2.1 work happens on v2.1, so
-        none of this would have run on a push until the trigger includes it."""
-        self.assertIn("v2.1", self.text)
+        """The 2.2 work happens on v2.2, so none of this would have run on a
+        push until the trigger includes it."""
+        self.assertIn("v2.2", self.text)
 
 
 if __name__ == "__main__":
