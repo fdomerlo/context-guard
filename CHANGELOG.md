@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [2.5.0] - 2026-08-06
+## [2.4.0] - 2026-08-06
 
 The bridge between a plan and a change was copy-paste. A phased `PLAN-N.md`
 already holds what `cg new` leaves as `[PENDING]`; now the tool reads it.
