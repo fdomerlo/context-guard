@@ -23,19 +23,18 @@ SPANISH_INDICATORS = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
 
 
 class TestPyprojectVersion(unittest.TestCase):
-    def test_version_is_2_5_0(self):
+    def test_version_is_2_4_0(self):
         """A minor bump: `cg new --from-plan` is additive, nothing removed
         from the public surface. Pinned here so the release tag and the
-        CHANGELOG cannot drift from what actually ships.
-
-        2.3 and 2.4 were planned and never released — the version follows the
-        plan numbering the cycles were executed under, so a reader tracing a
-        CHANGELOG entry back to its PLAN-N.md finds the matching one."""
+        CHANGELOG cannot drift from what actually ships — which is exactly
+        what this caught: the first attempt at this release tagged v2.4.0
+        over a tree still pinned to 2.5.0, and the publish workflow's test
+        job would have refused to ship it."""
         with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
             text = f.read()
         match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "version not declared")
-        self.assertEqual(match.group(1), "2.5.0")
+        self.assertEqual(match.group(1), "2.4.0")
 
     def test_description_is_the_one_sentence_pitch(self):
         """PLAN.md 0.7's pitch doubles as the PyPI project description — the
