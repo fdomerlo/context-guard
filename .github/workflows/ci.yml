@@ -1,10 +1,14 @@
 name: CI
 
+# The push list is a pattern, not an enumeration: cycle branches follow vX.Y
+# and the old explicit list went stale silently — v2.5 got no CI on push, only
+# once its PR opened. On pull_request the filter matches the *base* branch, so
+# main alone covers every PR into it.
 on:
   push:
-    branches: [main, v2, v2.1, v2.2]
+    branches: [main, 'v[0-9]*']
   pull_request:
-    branches: [main, v2, v2.1, v2.2]
+    branches: [main]
 
 jobs:
   test:
