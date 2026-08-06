@@ -112,6 +112,63 @@ class TestToleratesPlansThatIgnoreTheTemplate(unittest.TestCase):
         self.assertIn("old key still resolves", f2.acceptance)
 
 
+class TestWrappedBulletsSurviveIntact(unittest.TestCase):
+    """Plans are hard-wrapped at ~76 columns, so most bullets span two lines.
+    Taking only the first line silently truncates the task text — the failure
+    is invisible in the generated file, which still looks well-formed."""
+
+    def test_a_wrapped_bullet_keeps_its_continuation(self):
+        from context_guard.guard.plan_import import _bullet_items
+        block = (
+            "- A bullet long enough that the author wrapped it across\n"
+            "  two lines in the source file.\n"
+            "- A short one."
+        )
+        items = _bullet_items(block)
+        self.assertEqual(len(items), 2)
+        self.assertEqual(
+            items[0],
+            "A bullet long enough that the author wrapped it across two lines "
+            "in the source file.",
+        )
+
+    def test_wrapped_bullets_in_a_real_plan_are_not_truncated(self):
+        from context_guard.guard.plan_import import _bullet_items
+        plan = parse_plan(fixture("plan_es.md"))
+        for item in _bullet_items(plan.phases[0].acceptance):
+            self.assertFalse(
+                item.endswith(("de", "que", "la", "el", "con", "sus")),
+                f"bullet looks truncated mid-sentence: {item!r}",
+            )
+
+
+class TestNeutralizeSentinel(unittest.TestCase):
+    """Only the brackets go — the word stays, so the imported sentence still
+    means what its author wrote."""
+
+    def test_bare_sentinel_loses_its_brackets(self):
+        from context_guard.guard.plan_import import neutralize_sentinel
+        text, changed = neutralize_sentinel("still at [PENDING] today")
+        self.assertEqual(text, "still at PENDING today")
+        self.assertTrue(changed)
+
+    def test_backticked_sentinel_keeps_its_backticks(self):
+        from context_guard.guard.plan_import import neutralize_sentinel
+        text, _ = neutralize_sentinel("the `[PENDING]` marker")
+        self.assertEqual(text, "the `PENDING` marker")
+
+    def test_text_without_the_sentinel_is_untouched(self):
+        from context_guard.guard.plan_import import neutralize_sentinel
+        text, changed = neutralize_sentinel("nothing to do here")
+        self.assertEqual(text, "nothing to do here")
+        self.assertFalse(changed)
+
+    def test_every_occurrence_is_replaced(self):
+        from context_guard.guard.plan_import import neutralize_sentinel
+        text, _ = neutralize_sentinel("[PENDING] and [PENDING]")
+        self.assertNotIn("[PENDING]", text)
+
+
 class TestAFileWithNoPhasesIsAnError(unittest.TestCase):
     """A document with no F-block is not a plan. Returning zero phases would
     let cg new --from-plan report success having created nothing."""

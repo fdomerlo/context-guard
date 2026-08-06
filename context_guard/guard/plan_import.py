@@ -80,6 +80,97 @@ def _join(lines):
     return "\n".join(lines).strip()
 
 
+# The marker _scaffold_artifacts writes into an unfilled artifact, and the
+# exact literal the PLAN->EXECUTE hard gate refuses to commit over.
+SCAFFOLD_SENTINEL = "[PENDING]"
+
+
+def neutralize_sentinel(text):
+    """Strip the brackets off any quoted scaffold sentinel in imported prose.
+
+    A plan about context-guard itself quotes `[PENDING]` when describing the
+    scaffold. Copied verbatim into objective.md, that literal reads to the
+    hard gate as an artifact nobody filled in, and the imported change is born
+    stuck — refused with VALIDATION before the approval gate is even reached.
+
+    Fixed here rather than in the gate: the artifact really was filled, so the
+    match is a false positive on this side. Loosening the gate would loosen it
+    for every change, imported or not.
+
+    Returns:
+        (text, changed)
+    """
+    if SCAFFOLD_SENTINEL not in text:
+        return text, False
+    return text.replace(SCAFFOLD_SENTINEL, SCAFFOLD_SENTINEL.strip("[]")), True
+
+
+def _bullet_items(block):
+    """Pull the bullet lines out of a sub-block, falling back to its prose.
+
+    A phase whose acceptance criteria are a paragraph rather than a list still
+    has to yield something actionable: an empty tasks.md leaves next-task with
+    nothing to hand out, which is worse than one coarse task.
+    """
+    items = []
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("- ", "* ")):
+            items.append([stripped[2:].strip()])
+        elif re.match(r"^\d+[.)]\s+", stripped):
+            items.append([re.sub(r"^\d+[.)]\s+", "", stripped)])
+        elif stripped and items:
+            # Plans are hard-wrapped, so a bullet routinely continues on the
+            # next line. Dropping it truncates the task mid-sentence.
+            items[-1].append(stripped)
+    if items:
+        return [" ".join(parts) for parts in items]
+    collapsed = " ".join(block.split()).strip()
+    return [collapsed] if collapsed else []
+
+
+def phase_objective(plan, phase):
+    """The objective.md body for an imported phase."""
+    parts = [f"# {phase.id} — {phase.name}".rstrip(" —"), ""]
+    if plan.objective:
+        parts += ["## Plan objective", "", plan.objective, ""]
+    if phase.body:
+        parts += ["## What changes and why", "", phase.body, ""]
+    if phase.spec:
+        parts += ["## Spec", "", phase.spec, ""]
+    parts += [f"Imported from {os.path.basename(plan.path or 'plan')}"
+              f" ({plan.title}).", ""]
+    return "\n".join(parts)
+
+
+def phase_tasks(plan, phase):
+    """The tasks.md body for an imported phase.
+
+    Numbered `- [ ] N.M text` because that is the shape _parse_task_lines
+    already extracts ids from; anything else would need hand-editing before
+    next-task worked.
+    """
+    groups = [
+        ("Tests", _bullet_items(phase.tests)),
+        ("Acceptance criteria", _bullet_items(phase.acceptance)),
+    ]
+    if not any(items for _, items in groups):
+        # Nothing structured in the phase — the body itself is the work.
+        groups = [("Tasks", _bullet_items(phase.body) or ["Implement this phase"])]
+
+    lines = [f"# Tasks: {phase.id} — {phase.name}".rstrip(" —"), ""]
+    section = 0
+    for heading, items in groups:
+        if not items:
+            continue
+        section += 1
+        lines += [f"## {section}. {heading}", ""]
+        for n, item in enumerate(items, start=1):
+            lines.append(f"- [ ] {section}.{n} {item}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def parse_plan(path):
     """Read a PLAN-N.md and return a Plan.
 

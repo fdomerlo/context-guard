@@ -29,6 +29,12 @@ from .transaction import (
     cmd_checkpoint,
 )
 from .migrate import cmd_migrate
+from .plan_import import (
+    neutralize_sentinel,
+    parse_plan,
+    phase_objective,
+    phase_tasks,
+)
 from .setup import (
     antigravity_detected,
     diverged_phases,
@@ -139,6 +145,73 @@ def cmd_new(context, change, host=None):
         materialise_antigravity_rule(context)
 
     return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}|phase=PLAN", EXIT_OK)
+
+
+def cmd_new_from_plan(context, change, plan_path, phase=None, host=None):
+    """Materialise a phased PLAN-N.md as one change per phase.
+
+    Each change is created through cmd_new — the scaffolding logic is not
+    forked — and only then are objective.md and tasks.md overwritten with the
+    content derived from the plan. snapshot.md is deliberately left [PENDING]:
+    it records the state of the repository at the moment work starts, which no
+    plan can know in advance.
+
+    A pre-written objective is not an approved one. The change lands in PLAN
+    with no `approval` in its manifest, so the commit into EXECUTE still fails
+    with APPROVAL_REQUIRED until a human runs `cg approve`.
+    """
+    # Parsed before anything is created: a plan with no phases must leave no
+    # half-imported changes behind.
+    plan = parse_plan(plan_path)
+
+    selected = plan.phases
+    if phase is not None:
+        wanted = phase.strip().upper()
+        selected = [p for p in plan.phases if p.id == wanted]
+        if not selected:
+            available = ",".join(p.id for p in plan.phases)
+            return CommandResult(
+                f"FAIL|PHASE_NOT_IN_PLAN|{phase}|available={available}",
+                EXIT_VALIDATION,
+            )
+
+    lines = []
+    created = 0
+    for p in selected:
+        change_name = f"{change}-{p.id.lower()}"
+        result = cmd_new(context, change_name, host=host)
+
+        if result.exit_code != EXIT_OK:
+            if "CHANGE_EXISTS" in result.message:
+                # Never overwrite a change already in flight.
+                lines.append(f"SKIP|CHANGE_EXISTS|{change_name}")
+                continue
+            return result
+
+        paths = get_paths(context, change_name)
+        created += 1
+        lines.append(f"SUCCESS|CHANGE_CREATED|{change_name}|phase=PLAN")
+
+        derived = {
+            "objective.md": phase_objective(plan, p),
+            "tasks.md": phase_tasks(plan, p),
+        }
+        for filename, content in derived.items():
+            # A plan quoting the scaffold sentinel would otherwise write a
+            # change the hard gate refuses as unfilled. Reported, never silent.
+            content, neutralized = neutralize_sentinel(content)
+            _write_artifact(paths["base"], filename, content)
+            if neutralized:
+                lines.append(
+                    f"NOTE|SENTINEL_NEUTRALIZED|{change_name}|{filename}")
+
+    lines.append(f"IMPORTED|{created}|from={os.path.basename(plan_path)}")
+    return CommandResult("\n".join(lines), EXIT_OK)
+
+
+def _write_artifact(base_dir, filename, content):
+    with open(os.path.join(base_dir, filename), "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 def cmd_list(context):
