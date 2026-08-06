@@ -122,8 +122,13 @@ cg commit --context <path> --change <change-name> --next-phase EXECUTE
 ```
 
 This advances `lock_phase` to `EXECUTE`, releases the phase lock, and
-auto-generates a checkpoint of the DAG state. Report to the user that PLAN is
-locked and EXECUTE is open, with the suggested next command: `/cg-continue`.
+auto-generates a checkpoint of the DAG state.
+
+Report to the user that PLAN is locked and EXECUTE is open. Then, in this
+same turn, load `.context-guard/phases/execute.md` and continue directly —
+do not wait for `/cg-continue`. Only stop and suggest `/cg-continue` if you
+are ending the turn for an unrelated reason, or the session might not
+continue (e.g., you are about to hit a context limit).
 
 ## Rules
 
