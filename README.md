@@ -188,6 +188,7 @@ unconditional block just gets `--no-verify`d, which leaves no trace at all.
 | Command | Purpose |
 |---|---|
 | `cg new <name> --context <path>` | Create a change and begin PLAN |
+| `cg new <name> --from-plan <file> [--phase F2]` | Import a phased `PLAN-N.md` as one change per phase |
 | `cg list --context <path>` | List active changes and their phase |
 | `cg begin --phase <PHASE> --context <path>` | Start a transaction for the given phase |
 | `cg approve [--by <who>] [--hotfix --reason "<text>"]` | Human-only: record the sign-off `commit` into EXECUTE requires |
@@ -229,6 +230,36 @@ shows what is active; `cg archive` moves a finished one to
 `changes/archive/`. `cg migrate` converts both legacy layouts — state-guard's
 `state.ini` and context-guard 1.x's flat `.context-guard/` — in place and
 idempotently, preserving any recorded human approval it finds.
+
+## From a phased plan
+
+If a cycle was already planned as a phased `PLAN-N.md` — the artifact
+[disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold)
+produces after you talk a project through with an assistant — `cg new
+--from-plan` materialises it instead of you retyping it:
+
+```bash
+cg new redis --from-plan PLAN-3.md
+```
+
+One change per `## F<N>` phase, named `redis-f1`, `redis-f2`, … Each phase's
+prose and spec become its `objective.md`; its test items and acceptance
+criteria become `tasks.md` as `- [ ] N.M <text>`, the shape `cg next-task`
+already claims. `--phase F2` imports a single phase. Re-running skips changes
+that already exist (`SKIP|CHANGE_EXISTS|<name>`) rather than overwriting work
+in flight.
+
+`snapshot.md` stays `[PENDING]`: it records the state of the repository when
+work starts, which no plan written beforehand can know.
+
+**Importing does not approve anything.** Each change lands in PLAN with no
+approval in its manifest, so `cg commit --next-phase EXECUTE` still exits 6
+until a human runs `cg approve` — once per phase. A pre-written objective is
+still an unreviewed one.
+
+The full flow: talk the project through → `disciplined-scaffold` writes
+`PLAN-N.md` → `cg new --from-plan` → each phase executes under the same
+approval gate as any other change.
 
 ## Pre-commit hook
 
@@ -289,6 +320,11 @@ turning a prompt into a good spec in the first place. Use context-guard
 together with whichever of them already generates your `objective.md` — it
 was designed to consume one, not to write one.
 
+[disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold) is
+the lighter step before this one: markdown-only phase discipline, no
+transactional state. When a project outgrows it, `cg new --from-plan` reads
+the `PLAN-N.md` it produced — see [From a phased plan](#from-a-phased-plan).
+
 ## Development
 
 ```bash
@@ -299,7 +335,9 @@ python -m unittest discover -s tests
 
 Framework: `unittest`. Every fix ships with an adversarial test that
 reproduces the bypass it closes; see `tests/test_adversarial_*.py` for the
-pattern. No fixtures on disk outside `tempfile.mkdtemp()`.
+pattern. Tests write only under `tempfile.mkdtemp()`; the sole read-only
+fixtures on disk are the sample plans in `tests/fixtures/`, which exist
+because `--from-plan` parses documents rather than generating them.
 
 ## License
 
