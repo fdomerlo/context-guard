@@ -1,11 +1,12 @@
 ---
 name: context-guard
 description: >-
-  Use when the user asks for a multi-step coding task, when they ask to
-  resume work after a lost, crashed or compacted session, or in any project
-  that already contains a `.context-guard/` directory. Drives the `cg` CLI so
-  a phase-governed change keeps its plan, its progress and its verification
-  on disk instead of in the conversation.
+  Use when the user asks to build, implement, or scaffold an application or
+  feature; for any multi-step coding task; to resume work after a lost,
+  crashed or compacted session; or in any project that already contains a
+  `.context-guard/` directory. Drives the `cg` CLI so a phase-governed change
+  keeps its plan, its progress and its verification on disk instead of in
+  the conversation.
 ---
 
 <!-- context-guard:begin -->

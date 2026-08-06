@@ -35,6 +35,15 @@ respectively, plus the merged permission config
   multi-step coding task, and watch whether it invokes `cg` on its own,
   unprompted. That behavior, not any command's output, is the verification.
 
+  The `description` in `skills/context-guard/SKILL.md` governs whether the
+  skill loads at all for a given prompt — PLAN-2.3 F2 found the prior
+  wording did not fire on a direct implementation prompt ("build a simple
+  todo app") without an explicit `/context-guard` invocation. Current
+  `description` covers build/implement/scaffold requests explicitly;
+  validated live against **Antigravity CLI 1.1.10** on 2026-08-06, verified
+  by: fdomerlo. Re-verify this trigger whenever the `description` text or
+  the Antigravity CLI's skill-loading behavior changes.
+
 ### 3. `/cg-new demo` drives `cg`, not improvisation
 
 Run the new-change command. Confirm it actually calls `cg new demo

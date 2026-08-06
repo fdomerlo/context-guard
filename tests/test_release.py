@@ -23,16 +23,19 @@ SPANISH_INDICATORS = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
 
 
 class TestPyprojectVersion(unittest.TestCase):
-    def test_version_is_2_2_0(self):
-        """A minor bump: Antigravity discovery parity and the detector/docs
-        fixes are additive, nothing removed from the public surface.
-        PLAN-2.2 F3 fixes the number here so the release tag and the
-        CHANGELOG cannot drift from what actually ships."""
+    def test_version_is_2_5_0(self):
+        """A minor bump: `cg new --from-plan` is additive, nothing removed
+        from the public surface. Pinned here so the release tag and the
+        CHANGELOG cannot drift from what actually ships.
+
+        2.3 and 2.4 were planned and never released — the version follows the
+        plan numbering the cycles were executed under, so a reader tracing a
+        CHANGELOG entry back to its PLAN-N.md finds the matching one."""
         with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
             text = f.read()
         match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "version not declared")
-        self.assertEqual(match.group(1), "2.2.0")
+        self.assertEqual(match.group(1), "2.5.0")
 
     def test_description_is_the_one_sentence_pitch(self):
         """PLAN.md 0.7's pitch doubles as the PyPI project description — the

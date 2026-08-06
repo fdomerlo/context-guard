@@ -257,7 +257,13 @@ class TestTheAntigravitySkillIsShapedTheWayTheHostReadsIt(unittest.TestCase):
         disparadores concretos". Read literally, because a description that
         only says what the tool *is* gives the model nothing to match a user's
         prompt against."""
-        for trigger in ("multi-step", "resume", "session", ".context-guard/"):
+        for trigger in (
+            "multi-step", "resume", "session", ".context-guard/",
+            # PLAN-2.3 F2: confirmed live that the prior wording did not fire
+            # on a direct implementation prompt ("build a simple todo app")
+            # without an explicit /context-guard invocation.
+            "build", "implement", "scaffold",
+        ):
             with self.subTest(trigger=trigger):
                 self.assertIn(trigger, self.frontmatter)
 

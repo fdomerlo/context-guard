@@ -12,6 +12,7 @@ from .commands import (
     cmd_approve,
     cmd_check_lock,
     cmd_new,
+    cmd_new_from_plan,
     cmd_setup,
     cmd_list,
     cmd_migrate,
@@ -135,6 +136,14 @@ def parse_args(argv=None):
                        help="Also materialise this host's workspace files "
                             "(Antigravity's rule file). Detected automatically "
                             "when omitted.")
+    p_new.add_argument("--from-plan", dest="from_plan", default=None,
+                       help="Import a phased PLAN-N.md, creating one change "
+                            "per phase (<name>-f1, <name>-f2, ...) with "
+                            "objective.md and tasks.md derived from it. The "
+                            "approval gate is unchanged: each change still "
+                            "needs cg approve to reach EXECUTE.")
+    p_new.add_argument("--phase", default=None,
+                       help="With --from-plan, import only this phase (e.g. F2).")
 
     # setup takes no --context: it configures hosts, not a change. --project
     # opts back into 2.0's per-project install for teams committing the config.
@@ -180,7 +189,12 @@ def dispatch(args):
     """
     change = getattr(args, "change", None)
     handlers = {
-        "new": lambda: cmd_new(args.context, args.name, args.host),
+        "new": lambda: (
+            cmd_new_from_plan(args.context, args.name, args.from_plan,
+                              phase=args.phase, host=args.host)
+            if args.from_plan
+            else cmd_new(args.context, args.name, args.host)
+        ),
         "setup": lambda: cmd_setup(
             host=args.host, with_mcp=args.with_mcp, project=args.project,
             no_hooks=args.no_hooks),

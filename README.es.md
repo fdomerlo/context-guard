@@ -190,6 +190,7 @@ garantía de corrección, y viene con un bypass auditado
 | Comando | Propósito |
 |---|---|
 | `cg new <nombre> --context <ruta>` | Crea un change y arranca PLAN |
+| `cg new <nombre> --from-plan <archivo> [--phase F2]` | Importa un `PLAN-N.md` por fases como un change por fase |
 | `cg list --context <ruta>` | Lista los changes activos y su fase |
 | `cg begin --phase <FASE> --context <ruta>` | Inicia una transacción para la fase dada |
 | `cg approve [--by <quién>] [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
@@ -232,6 +233,36 @@ de forma independiente en el mismo proyecto. `cg new <nombre>` crea uno;
 `state.ini` de state-guard y el `.context-guard/` plano de context-guard
 1.x — in situ y de forma idempotente, preservando cualquier aprobación
 humana registrada que encuentre.
+
+## Desde un plan por fases
+
+Si el ciclo ya se planificó como un `PLAN-N.md` por fases — el artefacto que
+produce [disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold)
+después de debatir un proyecto con el asistente — `cg new --from-plan` lo
+materializa en vez de que lo retipees:
+
+```bash
+cg new redis --from-plan PLAN-3.md
+```
+
+Un change por cada fase `## F<N>`, nombrados `redis-f1`, `redis-f2`, … La
+prosa y el spec de cada fase se vuelven su `objective.md`; sus ítems de test
+y criterios de aceptación se vuelven `tasks.md` en formato `- [ ] N.M
+<texto>`, el que `cg next-task` ya reclama. `--phase F2` importa una sola
+fase. Re-ejecutar saltea los changes que ya existen
+(`SKIP|CHANGE_EXISTS|<nombre>`) en vez de pisar trabajo en curso.
+
+`snapshot.md` queda `[PENDING]`: registra el estado del repositorio al
+arrancar, que ningún plan escrito de antemano puede conocer.
+
+**Importar no aprueba nada.** Cada change entra en PLAN sin aprobación en su
+manifest, así que `cg commit --next-phase EXECUTE` sigue saliendo con código
+6 hasta que un humano corra `cg approve` — una vez por fase. Un objetivo
+pre-escrito sigue siendo un objetivo sin revisar.
+
+El flujo completo: debatir el proyecto → `disciplined-scaffold` escribe
+`PLAN-N.md` → `cg new --from-plan` → cada fase se ejecuta bajo el mismo gate
+de aprobación que cualquier otro change.
 
 ## Hook de pre-commit
 
@@ -296,6 +327,11 @@ lo referido a convertir un prompt en un buen spec en primer lugar. Usá
 context-guard junto con cualquiera de ellos que ya te genere el
 `objective.md` — está diseñado para consumir uno, no para escribirlo.
 
+[disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold) es
+el paso liviano previo a este: disciplina de fases en markdown, sin estado
+transaccional. Cuando un proyecto lo supera, `cg new --from-plan` lee el
+`PLAN-N.md` que produjo — ver [Desde un plan por fases](#desde-un-plan-por-fases).
+
 ## Desarrollo
 
 ```bash
@@ -306,7 +342,10 @@ python -m unittest discover -s tests
 
 Framework: `unittest`. Cada fix se entrega con un test adversarial que
 reproduce el bypass que cierra; ver `tests/test_adversarial_*.py` para el
-patrón. Sin fixtures en disco fuera de `tempfile.mkdtemp()`.
+patrón. Los tests solo escriben bajo `tempfile.mkdtemp()`; los únicos
+fixtures en disco son los planes de ejemplo de solo lectura en
+`tests/fixtures/`, que existen porque `--from-plan` parsea documentos en vez
+de generarlos.
 
 ## Licencia
 

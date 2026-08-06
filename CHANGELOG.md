@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.5.0] - 2026-08-06
+
+The bridge between a plan and a change was copy-paste. A phased `PLAN-N.md`
+already holds what `cg new` leaves as `[PENDING]`; now the tool reads it.
+
+### Added
+
+- `cg new <name> --from-plan <file>` imports a phased `PLAN-N.md`, creating
+  one change per `## F<N>` phase (`<name>-f1`, `<name>-f2`, …). Each phase's
+  prose and spec become `objective.md`; its test items and acceptance
+  criteria become `tasks.md` in the `- [ ] N.M <text>` form `next-task`
+  already parses. `--phase F2` imports one phase. `snapshot.md` stays
+  `[PENDING]` — it records the repository state at start, which no plan
+  written beforehand can know.
+- `context_guard/guard/plan_import.py`: `parse_plan()` reads a plan into
+  title, one-sentence objective, and phases. Headings delimit phases;
+  `**Spec:**`, `**Tests:**` and `**Acceptance criteria:**` sub-blocks are
+  recognized in English and Spanish. A missing sub-block is empty, not an
+  error; a file with no phase heading is `FAIL|PLAN_NO_PHASES|<path>`.
+  Parsed with `re` alone — no new dependencies.
+- Changes imported from a plan carry no approval. `cg commit --next-phase
+  EXECUTE` still exits 6 until a human runs `cg approve`, once per phase.
+  Covered by an adversarial test: a pre-written objective is not a reviewed
+  one.
+- Re-importing skips changes that already exist
+  (`SKIP|CHANGE_EXISTS|<name>`) instead of overwriting work in flight.
+- A plan quoting the scaffold sentinel `[PENDING]` in its own prose — any
+  plan about context-guard itself — would have produced a change the
+  PLAN→EXECUTE gate refuses as unfilled, stuck before the approval gate was
+  ever reached. The brackets are stripped on import and the substitution is
+  reported (`NOTE|SENTINEL_NEUTRALIZED|<change>|<file>`). Fixed on the
+  import side deliberately: the artifact really was filled, so loosening the
+  gate would have loosened it for every change, imported or not.
+
 ## [2.2.0] - 2026-08-02
 
 Triggered by real dogfooding: Antigravity never raised the context-guard

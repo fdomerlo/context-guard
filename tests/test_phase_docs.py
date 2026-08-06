@@ -122,6 +122,47 @@ class TestPhaseDocs(unittest.TestCase):
         self.assertIn("ARCHIVE", text)
         self.assertIn("cg archive", text)
 
+    def test_step6_continues_into_execute_before_suggesting_cg_continue(self):
+        # PLAN-2.3 F1: after a successful commit into EXECUTE, the agent must
+        # continue in the same turn instead of stopping to merely suggest
+        # /cg-continue as the next step.
+        text = self._read("plan.md")
+        # Hard-wrapped prose (~80 cols) can split a phrase across a newline;
+        # collapse whitespace so substring checks aren't wrap-position dependent.
+        step6 = " ".join(text.split("### Step 6")[1].split())
+        same_turn_idx = step6.find("in this same turn")
+        suggest_idx = step6.find("suggest `/cg-continue`")
+        self.assertNotEqual(same_turn_idx, -1, "Step 6 must instruct continuing in the same turn")
+        self.assertNotEqual(suggest_idx, -1, "Step 6 must still cover the /cg-continue fallback")
+        self.assertLess(
+            same_turn_idx, suggest_idx,
+            "Step 6 must instruct continuing in the same turn before it mentions suggesting /cg-continue",
+        )
+
+    def test_step6_continuation_is_gated_only_on_commit_success(self):
+        # PLAN-2.3 F1: the fix must not read as license to continue without
+        # approval — approval already happened before the commit in Step 5/6.
+        # The continuation itself must not carry any *additional* condition.
+        text = self._read("plan.md")
+        # Hard-wrapped prose (~80 cols) can split a phrase across a newline;
+        # collapse whitespace so substring checks aren't wrap-position dependent.
+        step6 = " ".join(text.split("### Step 6")[1].split())
+        self.assertIn(
+            "Then, in this same turn, load `.context-guard/phases/execute.md` "
+            "and continue directly",
+            step6,
+        )
+        report_idx = step6.find("Report to the user")
+        continue_idx = step6.find("do not wait for `/cg-continue`.")
+        self.assertNotEqual(report_idx, -1)
+        self.assertNotEqual(continue_idx, -1)
+        continuation_clause = step6[report_idx:continue_idx]
+        self.assertNotIn(
+            " if ", continuation_clause.lower(),
+            "the instruction to continue must not carry a new condition beyond "
+            "the commit already having succeeded",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
