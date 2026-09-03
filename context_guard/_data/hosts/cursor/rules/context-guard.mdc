@@ -1,0 +1,20 @@
+---
+description: Active persistence contract and phase discipline for context-guard
+globs: 
+alwaysApply: true
+---
+<!-- context-guard:begin -->
+## ACTIVE PERSISTENCE CONTRACT: context-guard
+MANDATORY BOOTSTRAP — read before responding to anything in a project that
+has a `.context-guard/` directory:
+1. Read `AGENTS.md` at the project root and follow it as your state contract.
+2. State manager binary: `cg` (or `context-guard`). Operative subcommands:
+   begin | commit | rollback | checkpoint | status | next-task | validate
+   Human-only subcommand (never run by the agent): `cg approve`.
+   If `commit` returns EXIT_APPROVAL_REQUIRED (6): stop and ask the user to
+   run `cg approve --change <name>` themselves.
+3. Check `.context-guard/changes/*/manifest.json` for an active change and
+   act accordingly (cold start, resume via `cg status`, or report a stuck
+   lock — never fix a stuck lock by editing the manifest by hand).
+4. Phase instructions live in `.context-guard/phases/{plan,execute,verify}.md`.
+<!-- context-guard:end -->

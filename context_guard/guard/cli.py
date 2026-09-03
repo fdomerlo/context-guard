@@ -131,7 +131,7 @@ def parse_args(argv=None):
     p_new = subparsers.add_parser("new")
     p_new.add_argument("--context", default=".")
     p_new.add_argument("name")
-    p_new.add_argument("--host", choices=["claude", "opencode", "antigravity"],
+    p_new.add_argument("--host", choices=["claude", "opencode", "antigravity", "cursor"],
                        default=None,
                        help="Also materialise this host's workspace files "
                             "(Antigravity's rule file). Detected automatically "
@@ -148,7 +148,7 @@ def parse_args(argv=None):
     # setup takes no --context: it configures hosts, not a change. --project
     # opts back into 2.0's per-project install for teams committing the config.
     p_setup = subparsers.add_parser("setup")
-    p_setup.add_argument("--host", choices=["claude", "opencode", "antigravity", "all"],
+    p_setup.add_argument("--host", choices=["claude", "opencode", "antigravity", "cursor", "all"],
                          default="all")
     p_setup.add_argument("--with-mcp", action="store_true",
                          help="Also register the context-guard-mcp server. "

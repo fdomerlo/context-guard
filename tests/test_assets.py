@@ -41,6 +41,8 @@ EXPECTED_DATA_FILES = {
     "hosts/antigravity/rules/context-guard.md",
     "hosts/antigravity/skills/context-guard/SKILL.md",
     "hosts/antigravity/hooks.snippet.json",
+    "hosts/cursor/rules/context-guard.mdc",
+    "hosts/cursor/mcp.snippet.json",
 }
 
 EXPECTED_HOST_FILES = {
@@ -62,6 +64,10 @@ EXPECTED_HOST_FILES = {
         "skills/context-guard/SKILL.md",
         "hooks.snippet.json",
     },
+    "cursor": {
+        "rules/context-guard.mdc",
+        "mcp.snippet.json",
+    },
 }
 
 SNIPPETS = (
@@ -71,6 +77,7 @@ SNIPPETS = (
     ("opencode", "permissions"),
     ("opencode", "mcp"),
     ("antigravity", "hooks"),
+    ("cursor", "mcp"),
 )
 
 

@@ -23,18 +23,15 @@ SPANISH_INDICATORS = ["á", "é", "í", "ó", "ú", "ñ", "¿", "¡"]
 
 
 class TestPyprojectVersion(unittest.TestCase):
-    def test_version_is_2_4_0(self):
-        """A minor bump: `cg new --from-plan` is additive, nothing removed
-        from the public surface. Pinned here so the release tag and the
-        CHANGELOG cannot drift from what actually ships — which is exactly
-        what this caught: the first attempt at this release tagged v2.4.0
-        over a tree still pinned to 2.5.0, and the publish workflow's test
-        job would have refused to ship it."""
+    def test_version_is_2_5_0(self):
+        """A minor bump: Cursor adapter and unified Gemini config path.
+        Additive, nothing removed from the public surface. Pinned here so
+        the release tag and the CHANGELOG cannot drift from what actually ships."""
         with open(PYPROJECT_PATH, "r", encoding="utf-8") as f:
             text = f.read()
         match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "version not declared")
-        self.assertEqual(match.group(1), "2.4.0")
+        self.assertEqual(match.group(1), "2.5.0")
 
     def test_description_is_the_one_sentence_pitch(self):
         """PLAN.md 0.7's pitch doubles as the PyPI project description — the

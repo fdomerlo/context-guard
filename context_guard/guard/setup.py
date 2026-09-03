@@ -27,6 +27,7 @@ HOST_DIRS = {
     "claude": "claude-code",
     "opencode": "opencode",
     "antigravity": "antigravity",
+    "cursor": "cursor",
 }
 VALID_HOSTS = tuple(HOST_DIRS) + ("all",)
 
@@ -214,12 +215,12 @@ def _install_opencode(root, with_mcp, global_scope):
     return touched
 
 
-# The path was confirmed against Antigravity CLI 1.1.9 via the /skills panel,
-# which lists ~/.gemini/antigravity-cli/skills/ as the user's global location;
-# builtin/ is the subtree with checksum, a sibling of this one, not its parent.
-# ANTIGRAVITY_GLOBAL_ROOT remains as is: hooks.json does reside in .gemini/config/.
+# ~/.gemini/config/ is the unified configuration root for all Gemini tools
+# (CLI, IDE, ACP, Desktop). Hooks live at ~/.gemini/config/hooks.json and
+# global skills at ~/.gemini/config/skills/<name>/SKILL.md.
+# (~/.gemini/antigravity-cli/skills is a symlink pointing to ~/.gemini/config/skills).
 ANTIGRAVITY_GLOBAL_ROOT = (".gemini", "config")
-ANTIGRAVITY_SKILL_REL = (".gemini", "antigravity-cli", "skills", "context-guard", "SKILL.md")
+ANTIGRAVITY_SKILL_REL = (".gemini", "config", "skills", "context-guard", "SKILL.md")
 
 # Both artifacts we write into a user's tree as whole files carry this marker,
 # so a later run can tell its own output from a file of the same name the user
@@ -320,11 +321,24 @@ def _install_antigravity(root, global_scope, no_hooks=False):
     skill_text = _embedded_antigravity_file("skills/context-guard/SKILL.md")
     if skill_text is not None:
         skill_rel = os.path.join(*ANTIGRAVITY_SKILL_REL)
-        written, skip = _write_owned(os.path.join(root, skill_rel), skill_text)
+        skill_dest = os.path.join(root, skill_rel)
+        written, skip = _write_owned(skill_dest, skill_text)
         if written:
             touched.append(skill_rel.replace(os.sep, "/"))
         if skip:
             skips.append(skip)
+
+        # Legacy skill path cleanup if it was installed as a real file previously
+        legacy_rel = os.path.join(".gemini", "antigravity-cli", "skills", "context-guard", "SKILL.md")
+        legacy_path = os.path.join(root, legacy_rel)
+        if (os.path.exists(legacy_path) and
+                os.path.realpath(legacy_path) != os.path.realpath(skill_dest)):
+            try:
+                with open(legacy_path, "r", encoding="utf-8") as f:
+                    if OWNERSHIP_MARKER in f.read():
+                        os.remove(legacy_path)
+            except OSError:
+                pass
 
     # `--no-hooks` declines the enforcement, not the discovery. A user who
     # does not want the deny hook still wants their agent to know the tool
@@ -368,6 +382,36 @@ def _install_antigravity(root, global_scope, no_hooks=False):
     return touched, None, skips
 
 
+def _install_cursor(root, with_mcp, global_scope):
+    """Cursor adapter installs .cursor/rules/context-guard.mdc (in both global
+    and project scopes) and optionally registers context-guard-mcp in .cursor/mcp.json.
+    """
+    touched = []
+    skips = []
+
+    for relpath, text in iter_host_files("cursor"):
+        if relpath == "rules/context-guard.mdc":
+            rule_rel = os.path.join(".cursor", "rules", "context-guard.mdc")
+            written, skip = _write_owned(os.path.join(root, rule_rel), text)
+            if written:
+                touched.append(rule_rel.replace(os.sep, "/"))
+            if skip:
+                skips.append(skip)
+            break
+
+    if with_mcp:
+        mcp_rel = os.path.join(".cursor", "mcp.json")
+        mcp_path = os.path.join(root, mcp_rel)
+        snippet = json.loads(read_snippet("cursor", "mcp"))
+        cfg = _read_json(mcp_path) or {}
+        cfg.setdefault("mcpServers", {}).setdefault(
+            "context-guard", snippet["mcpServers"]["context-guard"])
+        _write_json(mcp_path, cfg)
+        touched.append(mcp_rel.replace(os.sep, "/"))
+
+    return touched, skips
+
+
 # ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------
@@ -398,6 +442,9 @@ def _detected(host, home):
                 or os.path.isdir(os.path.join(home, ".gemini", "antigravity-cli"))
                 or _on_path("antigravity")
                 or _on_path("agy"))
+    if host == "cursor":
+        return (os.path.isdir(os.path.join(home, ".cursor"))
+                or _on_path("cursor"))
     return False
 
 
@@ -465,6 +512,15 @@ def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
             else:
                 lines.append("  -> Antigravity: skill installed, deny hook merged "
                              "into ~/.gemini/config/hooks.json")
+        elif name == "cursor":
+            cursor_touched, cursor_skips = _install_cursor(
+                root, with_mcp, global_scope)
+            touched += cursor_touched
+            skips += cursor_skips
+            if with_mcp:
+                lines.append("  -> Cursor: rule installed in .cursor/rules, MCP registered in .cursor/mcp.json")
+            else:
+                lines.append("  -> Cursor: rule installed in .cursor/rules (cooperative approval gate)")
 
     for name in HOST_DIRS:
         if name in selected:
@@ -547,6 +603,22 @@ def materialise_antigravity_rule(context):
 
 def antigravity_detected():
     return _detected("antigravity", _home())
+
+
+def materialise_cursor_rule(context):
+    """Write Cursor rule file, unless the project already has one."""
+    path = os.path.join(context, ".cursor", "rules", "context-guard.mdc")
+    if os.path.exists(path):
+        return []
+    for relpath, text in iter_host_files("cursor"):
+        if relpath == "rules/context-guard.mdc":
+            _write_text(path, text)
+            return [path]
+    return []
+
+
+def cursor_detected():
+    return _detected("cursor", _home())
 
 
 def diverged_phases(context):

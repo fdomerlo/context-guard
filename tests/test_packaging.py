@@ -130,7 +130,7 @@ for name in ("plan", "execute", "verify"):
 for host, snippet in %(snippets)r:
     out["snippets"]["%%s/%%s" %% (host, snippet)] = assets.read_snippet(host, snippet)
 out["hosts"] = {h: sorted(r for r, _ in assets.iter_host_files(h))
-                for h in ("claude-code", "opencode", "antigravity")}
+                for h in ("claude-code", "opencode", "antigravity", "cursor")}
 json.dump(out, sys.stdout)
 """
 
@@ -238,7 +238,7 @@ json.dump(out, sys.stdout)
                         # three hosts must each end up with a *discoverable*
                         # entry point. Antigravity's is this skill; the hook
                         # above is enforcement, which nobody discovers.
-                        ".gemini/antigravity-cli/skills/context-guard/SKILL.md"):
+                        ".gemini/config/skills/context-guard/SKILL.md"):
             with self.subTest(path=relpath):
                 self.assertTrue(os.path.exists(os.path.join(home, relpath)),
                                 f"{relpath} was not configured by cg setup")

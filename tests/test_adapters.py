@@ -95,7 +95,7 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
     it ships the cooperative half and calls it enforcement.
     """
 
-    HOSTS = ("claude-code", "opencode", "antigravity")
+    HOSTS = ("claude-code", "opencode", "antigravity", "cursor")
 
     def _permissions_doc(self, host):
         path = os.path.join(DOCS_DIR, host, "PERMISSIONS.md")
@@ -128,7 +128,7 @@ class TestPermissionDocsPerHarness(unittest.TestCase):
         """PLAN.md backlog: the OpenCode and Antigravity adapters were never run
         against a real host. Documenting them as if they were is the kind of
         claim the audits exist to falsify."""
-        for host in ("opencode", "antigravity"):
+        for host in ("opencode", "antigravity", "cursor"):
             text = self._permissions_doc(host).lower()
             self.assertIn("unverified", text)
 
@@ -416,3 +416,24 @@ class TestVerifyChecklist(unittest.TestCase):
         at all."""
         self.assertRegex(self.text, r"- \[[ x]\]")
 
+
+
+CURSOR_DIR = os.path.join(HOSTS_DIR, "cursor")
+
+
+class TestCursorAdapter(unittest.TestCase):
+    RULE_PATH = os.path.join(CURSOR_DIR, "rules", "context-guard.mdc")
+    MCP_PATH = os.path.join(CURSOR_DIR, "mcp.snippet.json")
+
+    def test_rule_file_exists(self):
+        self.assertTrue(os.path.exists(self.RULE_PATH), "cursor rule file missing")
+        with open(self.RULE_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("cg approve", content)
+        self.assertIn("AGENTS.md", content)
+
+    def test_mcp_snippet_is_valid_json(self):
+        self.assertTrue(os.path.exists(self.MCP_PATH), "cursor mcp snippet missing")
+        with open(self.MCP_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["mcpServers"]["context-guard"]["command"], "context-guard-mcp")

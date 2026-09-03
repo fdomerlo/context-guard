@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.5.0] - 2026-09-03
+
+### Added
+
+- Support for Cursor as a host adapter: `cg setup --host cursor` installs
+  `.cursor/rules/context-guard.mdc` (both globally in `~/.cursor/rules` and
+  per-project) and optionally registers `context-guard-mcp` in `.cursor/mcp.json`
+  via `--with-mcp`.
+- `cg new` automatically detects Cursor and materialises `.cursor/rules/context-guard.mdc`
+  in newly created changes.
+- Documentation for Cursor's cooperative approval gate model in
+  `docs/adapters/cursor/PERMISSIONS.md`.
+
+### Changed
+
+- Unified Gemini/Antigravity global skill installation path to
+  `~/.gemini/config/skills/context-guard/SKILL.md` (the canonical machine-local
+  configuration root shared across Gemini CLI, IDE, Desktop, and ACP).
+  This fixes broken symlinks when `~/.gemini/config/skills/` was not yet created.
+  Any legacy owned skill file at `~/.gemini/antigravity-cli/skills/context-guard/SKILL.md`
+  is cleaned up automatically on setup.
+
 ## [2.4.0] - 2026-08-06
 
 The bridge between a plan and a change was copy-paste. A phased `PLAN-N.md`

@@ -1,6 +1,6 @@
 # Tutorial: memoria persistente para tu asistente de programación con context-guard
 
-*Para personas que usan asistentes de IA (Claude Code, OpenCode, Antigravity) y quieren que no se olviden de lo que estaban haciendo. No hace falta ser experto: si sabés abrir una terminal y copiar comandos, podés seguir esta guía.*
+*Para personas que usan asistentes de IA (Claude Code, OpenCode, Antigravity, Cursor) y quieren que no se olviden de lo que estaban haciendo. No hace falta ser experto: si sabés abrir una terminal y copiar comandos, podés seguir esta guía.*
 
 ---
 
@@ -27,7 +27,7 @@ Una aclaración honesta, porque este proyecto se toma en serio la honestidad: co
 - **Una computadora con terminal.** macOS, Linux, o Windows con WSL.
 - **Python 3.10 o más nuevo.** Verificalo con `python3 --version`. Si no lo tenés, instalalo desde [python.org](https://www.python.org/downloads/).
 - **git.** Verificalo con `git --version`.
-- **Un asistente de programación instalado**: Claude Code, OpenCode o Antigravity. Cualquiera de los tres funciona; los comandos del asistente son los mismos.
+- **Un asistente de programación instalado**: Claude Code, OpenCode, Antigravity o Cursor. Cualquiera funciona; los comandos del asistente son los mismos.
 - **Un proyecto** donde trabajar. Puede ser uno existente o una carpeta nueva; solo necesita ser un repositorio git (si no lo es, entrá a la carpeta y corré `git init`).
 
 ---

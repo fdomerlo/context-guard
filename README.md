@@ -82,7 +82,7 @@ context-guard-cli`**: that installs into whichever venv is currently active —
 a single project's, if you happen to be inside one — not onto the machine,
 which silently defeats the point of a global `cg setup`.
 
-`cg setup` detects Claude Code, OpenCode and Antigravity, installs the slash
+`cg setup` detects Claude Code, OpenCode, Antigravity and Cursor, installs the slash
 commands, and puts `cg approve` behind each one's permission prompt — see
 [Adapters](#adapters-and-permission-configuration). It prints every file it
 touched, and running it again changes nothing.
@@ -294,7 +294,7 @@ an open transaction). Activate it once per clone with
 ## Adapters and permission configuration
 
 Thin, per-harness wrappers ship inside the package under
-`context_guard/_data/hosts/{claude-code,opencode,antigravity}/` — each points
+`context_guard/_data/hosts/{claude-code,opencode,antigravity,cursor}/` — each points
 at `phases/{plan,execute,verify}.md` rather than duplicating them. How to put
 `cg approve` behind each harness's permission prompt is documented in
 [docs/adapters/](docs/adapters/), one `PERMISSIONS.md` per host, alongside the

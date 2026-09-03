@@ -543,7 +543,7 @@ class SkillCase(SetupCase):
     """
 
     def skill_path(self):
-        return self.home_path(".gemini", "antigravity-cli", "skills", "context-guard", "SKILL.md")
+        return self.home_path(".gemini", "config", "skills", "context-guard", "SKILL.md")
 
     def skill_text(self):
         with open(self.skill_path(), "r", encoding="utf-8") as f:
@@ -594,7 +594,7 @@ class TestAntigravityGetsADiscoverableEntryPoint(SkillCase):
 
     def test_the_skill_is_listed_as_touched(self):
         res = self.setup(host="antigravity")
-        self.assertIn(".gemini/antigravity-cli/skills/context-guard/SKILL.md", res.message)
+        self.assertIn(".gemini/config/skills/context-guard/SKILL.md", res.message)
 
     def test_a_second_run_rewrites_it_byte_identically(self):
         self.setup(host="antigravity")
@@ -742,7 +742,7 @@ class TestEveryHostGetsADiscoveryEntryPoint(SetupCase):
     GLOBAL_DISCOVERY = {
         "claude": ".claude/commands/cg-new.md",
         "opencode": ".config/opencode/commands/cg-new.md",
-        "antigravity": ".gemini/antigravity-cli/skills/context-guard/SKILL.md",
+        "antigravity": ".gemini/config/skills/context-guard/SKILL.md",
     }
 
     PROJECT_DISCOVERY = {
@@ -1055,3 +1055,61 @@ class TestEmbeddedCommandsAreScopeAgnostic(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class TestCursorSetup(SetupCase):
+    def rule_path(self, global_scope=True):
+        if global_scope:
+            return self.home_path(".cursor", "rules", "context-guard.mdc")
+        return self.project_path(".cursor", "rules", "context-guard.mdc")
+
+    def mcp_path(self, global_scope=True):
+        if global_scope:
+            return self.home_path(".cursor", "mcp.json")
+        return self.project_path(".cursor", "mcp.json")
+
+    def test_cursor_global_setup_installs_rule(self):
+        res = self.setup(host="cursor")
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        self.assertTrue(os.path.exists(self.rule_path(global_scope=True)))
+        with open(self.rule_path(global_scope=True), "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("ACTIVE PERSISTENCE CONTRACT: context-guard", content)
+
+    def test_cursor_project_setup_installs_rule(self):
+        res = self.setup(host="cursor", project=self.project)
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        self.assertTrue(os.path.exists(self.rule_path(global_scope=False)))
+
+    def test_cursor_with_mcp_registers_server(self):
+        res = self.setup(host="cursor", with_mcp=True)
+        self.assertEqual(res.exit_code, EXIT_OK, res.message)
+        self.assertTrue(os.path.exists(self.mcp_path(global_scope=True)))
+        cfg = self.read_json(self.mcp_path(global_scope=True))
+        self.assertEqual(cfg["mcpServers"]["context-guard"]["command"], "context-guard-mcp")
+
+    def test_cursor_detection_via_dir(self):
+        os.makedirs(self.home_path(".cursor"), exist_ok=True)
+        self.setup(host="all")
+        self.assertTrue(os.path.exists(self.rule_path(global_scope=True)))
+
+    def test_cursor_detection_via_binary(self):
+        self.fake_binary("cursor")
+        self.setup(host="all")
+        self.assertTrue(os.path.exists(self.rule_path(global_scope=True)))
+
+    def test_cursor_not_detected_is_skipped(self):
+        res = self.setup(host="all")
+        self.assertFalse(os.path.exists(self.rule_path(global_scope=True)))
+        self.assertIn("cursor: not detected, skipped", res.message)
+
+    def test_foreign_cursor_rule_not_clobbered(self):
+        mine = "---\ndescription: custom\n---\n# custom rule\n"
+        os.makedirs(os.path.dirname(self.rule_path()), exist_ok=True)
+        with open(self.rule_path(), "w", encoding="utf-8") as f:
+            f.write(mine)
+        res = self.setup(host="cursor")
+        with open(self.rule_path(), "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), mine)
+        self.assertIn("SKIP|SKILL_EXISTS", res.message)

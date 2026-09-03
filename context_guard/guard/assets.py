@@ -17,7 +17,7 @@ from .errors import EXIT_GENERIC, GuardError
 
 PHASES = ("plan", "execute", "verify")
 
-HOSTS = ("claude-code", "opencode", "antigravity")
+HOSTS = ("claude-code", "opencode", "antigravity", "cursor")
 
 # Which snippets each host ships, keyed by the short name callers pass. The
 # file is always "<name>.snippet.json"; the mapping exists to be an allowlist,
@@ -26,6 +26,7 @@ SNIPPETS = {
     "claude-code": ("settings", "mcp"),
     "opencode": ("agent", "permissions", "mcp"),
     "antigravity": ("hooks",),
+    "cursor": ("mcp",),
 }
 
 
@@ -62,8 +63,7 @@ def iter_host_files(host):
     `relpath` is relative to the host's directory and always uses forward
     slashes, because callers join it onto a target directory to write the file
     out. Raises for an unknown host instead of yielding nothing: a `cg setup`
-    that installs zero files and exits 0 looks exactly like success.
-    """
+    that installs zero files and exits 0 looks exactly like success."""
     if host not in HOSTS:
         raise AssetNotFoundError(f"unknown host '{host}' (expected one of {', '.join(HOSTS)})")
 

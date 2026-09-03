@@ -37,8 +37,10 @@ from .plan_import import (
 )
 from .setup import (
     antigravity_detected,
+    cursor_detected,
     diverged_phases,
     materialise_antigravity_rule,
+    materialise_cursor_rule,
     materialise_phases,
     run_setup,
 )
@@ -143,6 +145,8 @@ def cmd_new(context, change, host=None):
     materialise_phases(context)
     if host == "antigravity" or (host is None and antigravity_detected()):
         materialise_antigravity_rule(context)
+    if host == "cursor" or (host is None and cursor_detected()):
+        materialise_cursor_rule(context)
 
     return CommandResult(f"SUCCESS|CHANGE_CREATED|{name}|phase=PLAN", EXIT_OK)
 

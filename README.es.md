@@ -80,7 +80,7 @@ en ese momento — el de un proyecto puntual, si estás parado adentro de
 uno — no en la máquina, lo que anula en silencio el sentido de un `cg setup`
 global.
 
-`cg setup` detecta Claude Code, OpenCode y Antigravity, instala los slash
+`cg setup` detecta Claude Code, OpenCode, Antigravity y Cursor, instala los slash
 commands, y deja `cg approve` detrás del permission prompt de cada uno — ver
 [Adapters](#adapters-y-configuración-de-permisos). Imprime cada archivo que
 tocó, y correrlo de nuevo no cambia nada.
@@ -297,7 +297,7 @@ fase completada o una transacción abierta). Activalo una vez por clon con
 ## Adapters y configuración de permisos
 
 Dentro del paquete, en `context_guard/_data/hosts/{claude-code,opencode,
-antigravity}/`, viven wrappers finos por harness — cada uno apunta a
+antigravity,cursor}/`, viven wrappers finos por harness — cada uno apunta a
 `phases/{plan,execute,verify}.md` en vez de duplicarlos. Cómo poner
 `cg approve` detrás del permission prompt de cada harness está documentado en
 [docs/adapters/](docs/adapters/), un `PERMISSIONS.md` por host, junto con el

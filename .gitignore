@@ -8,3 +8,5 @@ dist/
 PLAN.md
 PLAN-2.1.md
 RUNBOOK_HUMANO.md
+.claude/*.local.json
+uv.lock

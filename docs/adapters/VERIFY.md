@@ -17,7 +17,7 @@ that has to work first for 4-5 to mean anything.
 
 ```bash
 cd /path/to/toy-project
-cg setup --host <claude|opencode|antigravity>
+cg setup --host <claude|opencode|antigravity|cursor>
 ```
 
 Confirm the files land where the tests say they should:
@@ -88,3 +88,4 @@ today.
 - [x] Claude Code — verified by: fdomerlo on: 2026-08-02
 - [x] OpenCode — verified by: fdomerlo on: 2026-08-02
 - [x] Antigravity — verified by: fdomerlo on: 2026-08-02
+- [ ] Cursor — unverified
