@@ -61,6 +61,31 @@ cg status
 Cada línea de arriba corre tal cual está escrita contra un directorio nuevo;
 nada acá es un resumen ilustrativo.
 
+### Planificación estructurada con `cg plan`
+
+Para requerimientos que abarcan múltiples pasos o fases, `cg plan` descompone el requerimiento directamente en objetivos, fases (`F1`, `F2`, …), tareas y criterios de aceptación:
+
+```bash
+# (1) inicializa el contrato del repositorio y los hooks de git
+cg init
+
+# (2) estructura un requerimiento en un plan por fases
+cg plan "Agregar autenticación OAuth2"
+
+# (3) un humano revisa objective.md y tasks.md, y aprueba
+cg approve
+
+# (4) inicia EXECUTE y reclama tareas de forma atómica
+cg begin --phase EXECUTE
+cg next-task
+
+# (5) verifica criterios de aceptación y suite de tests
+cg verify
+
+# (6) confirma y avanza a la siguiente fase (o archiva)
+cg commit --next-phase NEXT
+```
+
 ## Instalación
 
 Dos líneas, una vez por máquina:
@@ -85,8 +110,9 @@ commands, y deja `cg approve` detrás del permission prompt de cada uno — ver
 [Adapters](#adapters-y-configuración-de-permisos). Imprime cada archivo que
 tocó, y correrlo de nuevo no cambia nada.
 
-Por proyecto no hay paso de instalación: `cg new` escribe las fases en
-`.context-guard/phases/` la primera vez que arrancás un change.
+Por proyecto, corré `cg init` una vez para scaffoldear el contrato de agentes (`AGENTS.md`),
+configurar las reglas de harnesses, instalar los hooks de git y materializar los archivos de fase.
+`cg new` también materializa los archivos de fase que falten bajo demanda.
 
 **Opcional — el servidor MCP**, para hosts sin shell (Claude Desktop es el
 caso para el que existe): `cg setup --with-mcp` lo registra. Todos los
@@ -121,8 +147,16 @@ para traer la versión actual.
 ## Cómo funciona
 
 ```
-PLAN  →  EXECUTE  →  VERIFY  →  ARCHIVE
+REQUIREMENT  →  INIT / SCAFFOLD  →  PLAN  →  DECOMPOSE  →  APPROVE  →  EXECUTE  →  VERIFY  →  ARCHIVE
 ```
+
+context-guard unifica la disciplina del repositorio, el contrato de agentes y el enforcement transaccional de fases en un flujo de trabajo único:
+
+1. **Scaffoldea el contrato del repositorio (`cg init`)**: Genera de forma idempotente `AGENTS.md`, reglas para cada harness (`CLAUDE.md`, `.cursorrules`, `.agent/rules/`), hooks de Git (`.githooks/commit-msg` forzando Conventional Commits y `.githooks/pre-commit`), y activa `core.hooksPath`.
+2. **Descompone requerimientos en planes estructurados (`cg plan`)**: Lee especificaciones o requerimientos en texto y estructura objetivos, especificaciones, DAG multi-fase (F1, F2...), tareas (`tasks.md`) y criterios de aceptación directamente en `manifest.json`.
+3. **Gate de aprobación humana (`cg approve`)**: Exige el visto bueno humano antes de entrar a `EXECUTE` para cada fase.
+4. **Ejecuta tareas atómicamente (`cg begin`, `cg next-task`, `cg release-task`)**: Reclama y avanza en cada tarea una por una con locking atómico.
+5. **Verifica y audita (`cg verify`)**: Verifica la ejecución de la suite de tests, comprueba la completitud de tareas y criterios de aceptación, actualiza reportes de auditoría (`verify-report.md`, `review-report.md`), y avanza a la siguiente fase o archivo.
 
 Cada change (`.context-guard/changes/<nombre>/`) avanza por este pipeline
 fase por fase, forzado por código, no por convención:
@@ -189,12 +223,15 @@ garantía de corrección, y viene con un bypass auditado
 
 | Comando | Propósito |
 |---|---|
+| `cg init [--strict] [--no-hooks]` | Scaffoldea el contrato de agentes (`AGENTS.md`), reglas de hosts y hooks de git |
+| `cg plan <requerimiento> [--from-file <ruta>]` | Descompone un requerimiento en plan estructurado, fases y tareas |
 | `cg new <nombre> --context <ruta>` | Crea un change y arranca PLAN |
 | `cg new <nombre> --from-plan <archivo> [--phase F2]` | Importa un `PLAN-N.md` por fases como un change por fase |
 | `cg list --context <ruta>` | Lista los changes activos y su fase |
-| `cg begin --phase <FASE> --context <ruta>` | Inicia una transacción para la fase dada |
+| `cg begin [--phase <FASE>] --context <ruta>` | Inicia una transacción para la fase dada |
 | `cg approve [--by <quién>] [--hotfix --reason "<texto>"]` | Solo humano: registra el visto bueno que `commit` exige para entrar a EXECUTE |
 | `cg commit --next-phase <FASE> --context <ruta>` | Valida los artefactos de la fase actual y avanza el DAG |
+| `cg verify [--fix] --context <ruta>` | Verifica tareas y criterios de aceptación, y actualiza reportes de auditoría |
 | `cg rollback --context <ruta>` | Restaura el snapshot del manifest tomado en `begin` |
 | `cg checkpoint --summary "<texto>" --context <ruta>` | Persiste un resumen de sesión para retomar en caliente |
 | `cg claim --context <ruta>` | Adquiere el lock de sesión, tomando uno stale si hace falta |
@@ -236,14 +273,19 @@ humana registrada que encuentre.
 
 ## Desde un plan por fases
 
-Si el ciclo ya se planificó como un `PLAN-N.md` por fases — el artefacto que
-produce [disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold)
+Si el ciclo ya se planificó como un `PLAN-N.md` por fases — el artefacto
+previamente generado por [disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold)
 después de debatir un proyecto con el asistente — `cg new --from-plan` lo
 materializa en vez de que lo retipees:
 
 ```bash
 cg new redis --from-plan PLAN-3.md
 ```
+
+Nota: Las capacidades de planificación y scaffolding de `disciplined-scaffold`
+ahora están unificadas nativamente dentro de `context-guard` mediante `cg init` y `cg plan`.
+El flag `--from-plan` continúa totalmente soportado para retrocompatibilidad
+al migrar proyectos existentes o importar documentos `PLAN-N.md` legados.
 
 Un change por cada fase `## F<N>`, nombrados `redis-f1`, `redis-f2`, … La
 prosa y el spec de cada fase se vuelven su `objective.md`; sus ítems de test
@@ -260,17 +302,21 @@ manifest, así que `cg commit --next-phase EXECUTE` sigue saliendo con código
 6 hasta que un humano corra `cg approve` — una vez por fase. Un objetivo
 pre-escrito sigue siendo un objetivo sin revisar.
 
-El flujo completo: debatir el proyecto → `disciplined-scaffold` escribe
-`PLAN-N.md` → `cg new --from-plan` → cada fase se ejecuta bajo el mismo gate
-de aprobación que cualquier otro change.
+El flujo unificado completo: `cg init` scaffoldea el contrato del repo → `cg plan` descompone
+el requerimiento → `cg approve` revisa cada fase → `cg begin` y `cg next-task` ejecutan →
+`cg verify` audita → `cg commit` avanza.
 
 ## Hook de pre-commit
 
-`.githooks/pre-commit` rechaza commits que tocan más de un umbral de
-archivos cuando ningún change muestra que el protocolo estuvo activo (una
-fase completada o una transacción abierta). Activalo una vez por clon con
-`git config core.hooksPath .githooks`.
+Los hooks de Git se instalan automáticamente mediante `cg init` o se activan por clon con
+`git config core.hooksPath .githooks`:
 
+- **`.githooks/commit-msg`**: Rechaza mensajes de commit que no siguen Conventional
+  Commits (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `release`). Se saltea con
+  `git commit --no-verify`.
+- **`.githooks/pre-commit`**: Rechaza commits que tocan más de un umbral de
+  archivos cuando ningún change muestra que el protocolo estuvo activo (una
+  fase completada o una transacción abierta).
 - **Umbral**: `hook.file_threshold` en el manifest de un change, o la
   variable de entorno `CONTEXT_GUARD_FILE_THRESHOLD`, que gana sobre el
   manifest. Con varios changes activos, aplica el valor configurado más
@@ -327,10 +373,9 @@ lo referido a convertir un prompt en un buen spec en primer lugar. Usá
 context-guard junto con cualquiera de ellos que ya te genere el
 `objective.md` — está diseñado para consumir uno, no para escribirlo.
 
-[disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold) es
+[disciplined-scaffold](https://github.com/fdomerlo/disciplined-scaffold) era
 el paso liviano previo a este: disciplina de fases en markdown, sin estado
-transaccional. Cuando un proyecto lo supera, `cg new --from-plan` lee el
-`PLAN-N.md` que produjo — ver [Desde un plan por fases](#desde-un-plan-por-fases).
+transaccional. Sus capacidades (contrato de agentes, scaffolding, hooks de commits convencionales, planificación multi-fase estructurada) ahora están nativamente integradas en context-guard (`cg init` y `cg plan`). Para proyectos con planes existentes, `cg new --from-plan` lee los `PLAN-N.md` legados — ver [Desde un plan por fases](#desde-un-plan-por-fases).
 
 ## Desarrollo
 

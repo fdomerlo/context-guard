@@ -4,7 +4,37 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
----
+## [2.6.0] - 2026-09-04
+
+### Added
+
+- `cg init`: repository scaffolding command that establishes the AI agent contract
+  in `AGENTS.md` (idempotent, delimited by `<!-- context-guard:begin -->` / `<!-- context-guard:end -->`),
+  configures harness rules (`CLAUDE.md`, `.cursorrules`, `.agent/rules/`), installs
+  git hooks (`.githooks/commit-msg` and `.githooks/pre-commit`), and activates
+  `core.hooksPath .githooks`.
+- `cg plan`: requirement decomposition engine that turns a prompt or specification
+  into a structured plan, multi-phase DAG (`F1`, `F2`, …), tasks, and acceptance criteria
+  persisted in `manifest.json` as the single source of truth.
+- `cg verify`: formal verification gate that validates completion of tasks and
+  acceptance criteria, checks off criteria in `tasks.md`, and updates audit reports
+  (`verify-report.md`, `review-report.md`).
+- Multi-phase transition support in `cg begin` and `cg commit`: advancing from `VERIFY`
+  to the next phase marks the current phase completed, switches `active_phase_id`,
+  and resets `lock_phase` to `PLAN` with mandatory human approval (`cg approve`)
+  before execution.
+- Enhanced `cg status` showing active phase, phase task progress, and completed/pending
+  phase lists.
+- Conventional Commits enforcement via `.githooks/commit-msg`, rejecting non-compliant
+  commit messages while supporting emergency bypass via `--no-verify`.
+
+### Changed
+
+- Unification of `disciplined-scaffold` into `context-guard`: absorbed repository
+  scaffolding, agent contract generation, commit discipline, and phased planning
+  into a single transactional state machine.
+- Deprecated `disciplined-scaffold` as a separate tool; existing phased plans continue
+  to be supported via `cg new --from-plan`.
 
 ## [2.5.0] - 2026-09-03
 

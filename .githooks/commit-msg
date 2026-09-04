@@ -1,0 +1,17 @@
+#!/bin/sh
+# Installed by Context Guard (cg init)
+# Rejects commit messages that don't follow Conventional Commits.
+# Bypass in an emergency with: git commit --no-verify
+
+msg_file="$1"
+first_line=$(head -n1 "$msg_file")
+
+pattern='^(feat|fix|docs|refactor|test|chore|release)(\([a-zA-Z0-9_.-]+\))?!?: .+'
+
+if ! echo "$first_line" | grep -Eq "$pattern"; then
+  echo "commit-msg hook: message doesn't look like a conventional commit."
+  echo "  got:      $first_line"
+  echo "  expected: type(scope): description   (types: feat fix docs refactor test chore release)"
+  echo "  bypass with: git commit --no-verify"
+  exit 1
+fi

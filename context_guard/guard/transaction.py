@@ -180,8 +180,15 @@ def cmd_approve(context, by=None, hotfix=False, reason=None, change=None):
     return with_write_lock(context, _do, change=change)
 
 
-def cmd_begin(context, phase, ttl=DEFAULT_TTL, change=None):
-    """Inicia una transacción para la fase dada (PLAN, EXECUTE, VERIFY)."""
+def cmd_begin(context, phase=None, ttl=DEFAULT_TTL, change=None):
+    """Inicia una transacción para la fase dada (PLAN, EXECUTE, VERIFY).
+    
+    Si phase es None, toma lock_phase del manifest.
+    """
+    if phase is None:
+        m_peek = load_manifest(context, change)
+        phase = m_peek.get("lock_phase", "PLAN") if m_peek else "PLAN"
+
     if phase not in VALID_PHASES:
         return CommandResult(f"FAIL|INVALID_PHASE|{phase}", EXIT_VALIDATION)
 
@@ -244,7 +251,7 @@ def cmd_begin(context, phase, ttl=DEFAULT_TTL, change=None):
 
 
 def cmd_commit(context, next_phase, change=None):
-    """Finaliza exitosamente la transacción y avanza en el DAG de 3 estados."""
+    """Finaliza exitosamente la transacción y avanza en el DAG de 3 estados o hacia la siguiente fase."""
     def _do():
         m = load_manifest(context, change)
         if not m:
@@ -256,7 +263,26 @@ def cmd_commit(context, next_phase, change=None):
 
         phase = txn.get("txn_phase")
         expected_next = TRANSITIONS.get(phase)
-        if expected_next != next_phase:
+
+        # Verificar si es un avance multi-fase desde VERIFY hacia una fase pendiente
+        phases = m.get("phases", [])
+        is_multiphase_advance = False
+        next_p = None
+        if phase == "VERIFY" and phases:
+            from .manifest import get_active_phase
+            curr = get_active_phase(m)
+            if curr:
+                found_curr = False
+                for p_item in phases:
+                    if found_curr and p_item.get("status") != "completed":
+                        next_p = p_item
+                        break
+                    if p_item.get("id") == curr.get("id"):
+                        found_curr = True
+            if next_p and next_phase in ("PLAN", next_p.get("id"), "NEXT"):
+                is_multiphase_advance = True
+
+        if not is_multiphase_advance and expected_next != next_phase:
             return CommandResult(
                 f"FAIL|BAD_TRANSITION|from={phase}|to={next_phase}|expected={expected_next}",
                 EXIT_BAD_TRANSITION,
@@ -314,6 +340,29 @@ def cmd_commit(context, next_phase, change=None):
         # iteration of the plan needs a new one.
         if phase == "PLAN" and next_phase == "EXECUTE" and m.get("approval"):
             _record_approval(m, m["approval"], "PLAN->EXECUTE")
+
+        if is_multiphase_advance and curr and next_p:
+            from .manifest import update_phase_status
+            update_phase_status(m, curr["id"], "completed")
+            m["active_phase_id"] = next_p["id"]
+            m["current_phase"] = "PLAN"
+            m["lock_phase"] = "PLAN"
+            m["pending_phases"] = list(VALID_PHASES)
+            completed = m.get("completed_phases", [])
+            completed_tag = f"{curr['id']}-VERIFY"
+            if completed_tag not in completed:
+                completed.append(completed_tag)
+            m["completed_phases"] = completed
+            txn["txn_status"] = "idle"
+            txn["txn_phase"] = "None"
+            txn["txn_started_at"] = None
+            txn.pop("snapshot", None)
+            save_manifest(context, m, change)
+            return CommandResult(
+                f"SUCCESS|PHASE_COMPLETED|{curr['id']}|next_phase={next_p['id']}|lock_phase=PLAN\n"
+                f"  Human review required for phase {next_p['id']}: run `cg approve` before entering EXECUTE",
+                EXIT_OK,
+            )
 
         # Actualizar grafo de fases
         m["current_phase"] = phase

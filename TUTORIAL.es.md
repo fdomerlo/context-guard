@@ -70,6 +70,16 @@ herramienta; todo lo que hagas con context-guard empieza con `cg`.
 un cambio en un proyecto nuevo, `cg new` escribe ahí lo que falte. No
 necesitás descargar este repositorio ni copiar archivos a mano.
 
+### Inicializar tu proyecto: cg init
+
+Cuando arranques a trabajar en un proyecto (nuevo o existente), corré adentro de su carpeta:
+
+```bash
+cg init
+```
+
+Esto crea el contrato del agente (`AGENTS.md`), configura las reglas para tus asistentes (`CLAUDE.md`, `.cursorrules`, `.agent/rules/`), e instala los hooks de git (`.githooks/commit-msg` y `.githooks/pre-commit`). Así, cualquier asistente que trabaje en el repositorio sabe exactamente qué reglas seguir y qué comandos correr.
+
 > **¿Dónde quedó instalado?** `uv tool install` y `pipx` ponen `cg` en un
 > directorio propio (`~/.local/bin` en Linux/macOS típicamente) y lo agregan
 > al PATH por vos. `pip install` sin `--user` lo deja donde viva tu Python
@@ -137,7 +147,7 @@ Un "cambio" (change) es una unidad de trabajo con nombre: una feature, un arregl
 /cg-new login-form
 ```
 
-*(o el nombre que describa tu tarea: `arreglar-boton-pago`, `migrar-base-datos`...)*
+*(o el nombre que describa tu tarea: `arreglar-boton-pago`, `migrar-base-datos`...). También podés usar `cg plan "Describí tu requerimiento"` desde la terminal para que context-guard descomponga el trabajo directamente en objetivos, fases (`F1`, `F2`...) y tareas.*
 
 El asistente crea el cambio y entra automáticamente en la fase **PLAN**. Detrás de escena apareció una carpeta `.context-guard/changes/login-form/` en tu proyecto — esa es la libreta. No la edites a mano nunca; para eso están los comandos.
 
@@ -151,13 +161,13 @@ cg approve
 
 Avisale al asistente que ya aprobaste, y ahora sí: pasa a **EXECUTE**.
 
-**Paso 4 — Ejecutar.** El asistente toma las tareas de la lista una por una — pide la siguiente con `cg next-task`, la hace, la marca completada. Cada tarea marcada queda escrita en disco al instante. Vos podés mirar el avance cuando quieras:
+**Paso 4 — Ejecutar.** El asistente toma las tareas de la lista una por una — pide la siguiente con `cg next-task`, escribe el código y sus tests, y la marca completada con `cg release-task`. Cada tarea marcada queda escrita en disco al instante. Vos podés mirar el avance cuando quieras:
 
 ```bash
 cg status
 ```
 
-**Paso 5 — Verificar.** Con todas las tareas completas, el asistente pasa a **VERIFY**: revisa su propio trabajo, corre los tests, y escribe dos reportes (revisión y verificación). Si algo falló, vuelve a corregir. Al terminar, el cambio se archiva con su historia completa.
+**Paso 5 — Verificar.** Con todas las tareas completas, el asistente pasa a **VERIFY**: corre `cg verify` para auditar los tests, comprobar los criterios de aceptación y generar los reportes de verificación y revisión (`verify-report.md`, `review-report.md`). Si es un plan de varias fases (F1, F2...), `cg commit` avanza a la siguiente fase volviendo a PLAN para que puedas revisar y aprobar el nuevo tramo. Si es la última fase, el cambio se archiva con su historia completa.
 
 ---
 
@@ -195,6 +205,8 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 
 **"¿Qué gano de verdad, en una frase?"** Que el conocimiento sobre tu trabajo deje de vivir en una conversación frágil y pase a vivir en tu disco, con orden de fases y tu firma antes de cada tramo de código.
 
+**"Git rechaza mi commit diciendo que no sigue Conventional Commits."** El hook instalado por `cg init` en `.githooks/commit-msg` exige mensajes en formato `tipo(scope): mensaje`, con tipos estándar como `feat`, `fix`, `docs`, `refactor`, `test`, `chore`. Por ejemplo: `feat(auth): add login form`. Para saltártelo en una emergencia real: `git commit --no-verify`.
+
 **"¿Y si el asistente decide ignorar todo esto?"** Puede — la herramienta lo ordena, no lo encarcela (el README lo explica en la sección *Threat Model*, sin marketing). En la práctica no pasa: los comandos instalados le indican el protocolo desde el primer mensaje, y el único momento de riesgo real — aprobarse un plan a sí mismo — está cubierto por el cartel de confirmación de tu propia aplicación, que corre fuera de su alcance.
 
 ---
@@ -203,10 +215,13 @@ Diagnostica y libera lo que quedó colgado de procesos muertos. Nunca resuelvas 
 
 | Momento | Vos hacés | El asistente hace |
 |---|---|---|
-| Empezar algo nuevo | `/cg-new nombre` | Crea el cambio, entra a PLAN |
+| Preparar repo nuevo | `cg init` | Scaffoldea `AGENTS.md`, reglas de hosts y hooks |
+| Empezar algo nuevo | `/cg-new nombre` o `cg plan "req"` | Crea el cambio / plan, entra a PLAN |
 | Revisar el plan | Leés `objective.md` y `tasks.md` | Espera tu aprobación |
 | Aprobar | `cg approve` | Pasa a EXECUTE |
 | Ver el avance | `cg status` | — |
+| Reclamar tarea | — | `cg next-task` / `cg release-task` |
+| Auditar y verificar | `cg verify` | Comprueba tareas y criterios |
 | Retomar tras un corte | `/cg-continue` | Continúa donde quedó |
 | Destrabar | `cg doctor --fix` | — |
 | Actualizar | `uv tool upgrade context-guard-cli && cg setup` | — |

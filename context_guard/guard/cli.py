@@ -9,6 +9,9 @@ import json
 import sys
 
 from .commands import (
+    cmd_init,
+    cmd_plan,
+    cmd_verify,
     cmd_approve,
     cmd_check_lock,
     cmd_new,
@@ -44,7 +47,8 @@ def parse_args(argv=None):
     # -- Transacciones y Checkpoints --
     p_begin = subparsers.add_parser("begin")
     p_begin.add_argument("--context", default=".")
-    p_begin.add_argument("--phase", required=True)
+    p_begin.add_argument("--phase", default=None,
+                         help="Phase to begin (defaults to current lock_phase)")
     p_begin.add_argument("--ttl", type=int, default=1800)
 
     p_commit = subparsers.add_parser("commit")
@@ -127,6 +131,12 @@ def parse_args(argv=None):
     p_archive = subparsers.add_parser("archive")
     p_archive.add_argument("--context", default=".")
 
+    # -- Verify --
+    p_verify = subparsers.add_parser("verify")
+    p_verify.add_argument("--context", default=".")
+    p_verify.add_argument("--fix", action="store_true",
+                          help="Generate verification and review reports even if pending items remain")
+
     # -- Changes --
     p_new = subparsers.add_parser("new")
     p_new.add_argument("--context", default=".")
@@ -164,6 +174,26 @@ def parse_args(argv=None):
                               "no enforcement of the approval gate, only the "
                               "workspace rule asking it not to.")
 
+    p_init = subparsers.add_parser("init")
+    p_init.add_argument("--context", default=".")
+    p_init.add_argument("--force", action="store_true", help="Force reinitialization")
+    p_init.add_argument("--no-hooks", action="store_true", help="Skip Git hooks installation")
+    p_init.add_argument("--test-cmd", default=None, help="Custom test command for AGENTS.md contract")
+    p_init.add_argument("--commit-types", default=None, help="Allowed conventional commit types")
+
+    p_plan = subparsers.add_parser("plan")
+    p_plan.add_argument("requirement", nargs="?", default=None,
+                        help="Requirement description (e.g. 'Implement OAuth2 authentication')")
+    p_plan.add_argument("--name", default=None,
+                        help="Name of the change (auto-generated if omitted)")
+    p_plan.add_argument("--change", dest="change_alias", default=None,
+                        help="Change to inspect or plan (alias for --name)")
+    p_plan.add_argument("--from-plan", dest="from_plan", default=None,
+                        help="Import a legacy phased PLAN-N.md into a unified change")
+    p_plan.add_argument("--spec", default=None,
+                        help="Optional detailed specification")
+    p_plan.add_argument("--context", default=".")
+
     p_list = subparsers.add_parser("list")
     p_list.add_argument("--context", default=".")
 
@@ -173,7 +203,7 @@ def parse_args(argv=None):
     # Every context-scoped command accepts --change. Omitting it is only safe
     # when exactly one change is active; ambiguity is an error, never a guess.
     for sub in subparsers.choices.values():
-        if sub in (p_list, p_new, p_migrate, p_setup):
+        if sub in (p_list, p_new, p_migrate, p_setup, p_init, p_plan):
             continue
         sub.add_argument("--change", default=None,
                          help="Change to operate on (required if several are active)")
@@ -189,6 +219,20 @@ def dispatch(args):
     """
     change = getattr(args, "change", None)
     handlers = {
+        "init": lambda: cmd_init(
+            context=args.context,
+            force=args.force,
+            no_hooks=args.no_hooks,
+            test_cmd=args.test_cmd,
+            commit_types=args.commit_types,
+        ),
+        "plan": lambda: cmd_plan(
+            context=args.context,
+            requirement=args.requirement,
+            name=args.name or getattr(args, "change_alias", None),
+            from_plan=args.from_plan,
+            spec=args.spec,
+        ),
         "new": lambda: (
             cmd_new_from_plan(args.context, args.name, args.from_plan,
                               phase=args.phase, host=args.host)
@@ -223,6 +267,7 @@ def dispatch(args):
             args.context, getattr(args, "agent_id", None), change),
         "status": lambda: cmd_status(args.context, change),
         "doctor": lambda: cmd_doctor(args.context, args.fix, change),
+        "verify": lambda: cmd_verify(args.context, change=change, fix=getattr(args, "fix", False)),
         "archive": lambda: cmd_archive(args.context, change),
     }
     return handlers[args.command]()
