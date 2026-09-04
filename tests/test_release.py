@@ -31,7 +31,7 @@ class TestPyprojectVersion(unittest.TestCase):
             text = f.read()
         match = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
         self.assertIsNotNone(match, "version not declared")
-        self.assertEqual(match.group(1), "2.5.0")
+        self.assertEqual(match.group(1), "2.6.0")
 
     def test_description_is_the_one_sentence_pitch(self):
         """PLAN.md 0.7's pitch doubles as the PyPI project description — the
