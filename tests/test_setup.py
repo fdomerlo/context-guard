@@ -841,6 +841,55 @@ class TestWithMcpFlag(SetupCase):
         self.assertIn("context-guard", cfg["mcp"])
 
 
+class TestUninstall(SetupCase):
+    def uninstall(self, host="all", project=None):
+        with mock.patch.dict(os.environ, self.env()):
+            return cmd_setup(host=host, project=project, uninstall=True)
+
+    def test_uninstall_removes_installed_host_artifacts(self):
+        self.detect_all_three()
+        self.setup(host="all", with_mcp=True)
+        result = self.uninstall()
+        self.assertEqual(result.exit_code, EXIT_OK, result.message)
+        for path in (
+            (".claude", "commands", "cg-new.md"),
+            (".claude", "commands", "cg-continue.md"),
+            (".config", "opencode", "commands", "cg-new.md"),
+            (".gemini", "config", "skills", "context-guard", "SKILL.md"),
+            (".cursor", "rules", "context-guard.mdc"),
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(os.path.exists(self.home_path(*path)))
+        self.assertNotIn("context-guard", self.read_json(
+            self.home_path(".claude.json")).get("mcpServers", {}))
+
+    def test_uninstall_preserves_modified_artifacts(self):
+        self.setup(host="antigravity")
+        path = self.home_path(".gemini", "config", "skills", "context-guard", "SKILL.md")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("\nuser change\n")
+        result = self.uninstall(host="antigravity")
+        self.assertEqual(result.exit_code, EXIT_OK, result.message)
+        self.assertTrue(os.path.exists(path))
+        self.assertIn("Skipped", result.message)
+
+    def test_uninstall_is_idempotent(self):
+        self.setup(host="claude")
+        first = self.uninstall(host="claude")
+        second = self.uninstall(host="claude")
+        self.assertEqual(first.exit_code, EXIT_OK, first.message)
+        self.assertEqual(second.exit_code, EXIT_OK, second.message)
+        self.assertIn("(none)", second.message)
+
+
+class TestUninstallIsDocumentedInHelp(unittest.TestCase):
+    def test_help_names_the_flag(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), self.assertRaises(SystemExit):
+            parse_args(["setup", "--help"])
+        self.assertIn("--uninstall", buf.getvalue())
+
+
 class TestNoAbsolutePathsLeakIntoInstalledFiles(SetupCase):
     """Ported, and it matters more than it did in 2.0: a global install is
     shared by every project on the machine, so one absolute path leaking in

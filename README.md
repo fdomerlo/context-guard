@@ -120,6 +120,25 @@ configure harness rules, install git hooks, and materialise the phase files.
 case it exists for): `cg setup --with-mcp` registers it. Every adapter works
 completely without it; MCP is an alternative transport, not a requirement.
 
+To remove the adapters from the detected hosts, run:
+
+```bash
+cg setup --uninstall
+```
+
+This removes Context Guard's integration files from the AI hosts, but the
+`cg` command itself remains installed so it can be used again later. This is
+different from uninstalling the CLI package entirely.
+
+Use `--host claude`, `--host opencode`, `--host antigravity`, or `--host cursor`
+to remove one host, and `--project <path>` for a project-scoped installation.
+The command removes only files and configuration entries owned by Context Guard;
+files that were changed after installation are left in place and reported.
+This does not remove project state under `.context-guard/`. To remove the CLI
+itself as well, use `uv tool uninstall context-guard-cli`, `pipx uninstall
+context-guard-cli`, or `pip uninstall context-guard-cli`, depending on how it
+was installed.
+
 **Contributing** ([development](#development) has the rest):
 
 ```bash

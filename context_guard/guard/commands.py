@@ -105,10 +105,11 @@ def _pid_is_alive(pid):
 # Changes
 # ---------------------------------------------------------------------------
 
-def cmd_setup(host="all", with_mcp=False, project=None, no_hooks=False):
-    """Install the host adapters. See guard/setup.py for the scope rules."""
+def cmd_setup(host="all", with_mcp=False, project=None, no_hooks=False,
+              uninstall=False):
+    """Install or uninstall host adapters. See guard/setup.py for scope rules."""
     return run_setup(host=host, with_mcp=with_mcp, project=project,
-                     no_hooks=no_hooks)
+                     no_hooks=no_hooks, uninstall=uninstall)
 
 
 def cmd_new(context, change, host=None):

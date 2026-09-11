@@ -412,6 +412,181 @@ def _install_cursor(root, with_mcp, global_scope):
     return touched, skips
 
 
+def _remove_owned_file(path, expected=None):
+    """Remove a marked artifact when it still matches the packaged copy."""
+    if not os.path.exists(path):
+        return "NOT_FOUND"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+            owned = OWNERSHIP_MARKER in content
+    except (OSError, UnicodeDecodeError):
+        return "SKIP|FILE_CHANGED"
+    if not owned or (expected is not None and content != expected):
+        return "SKIP|FILE_CHANGED"
+    os.remove(path)
+    return "REMOVED"
+
+
+def _remove_exact_file(path, expected):
+    """Remove an unmarked generated file only when it is byte-for-byte known."""
+    if not os.path.exists(path):
+        return "NOT_FOUND"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            matches = f.read() == expected
+    except (OSError, UnicodeDecodeError):
+        return "SKIP|FILE_CHANGED"
+    if not matches:
+        return "SKIP|FILE_CHANGED"
+    if matches:
+        os.remove(path)
+        return "REMOVED"
+
+
+def _remove_list_entries(values, entries):
+    if not isinstance(values, list):
+        return False
+    changed = False
+    for entry in entries:
+        while entry in values:
+            values.remove(entry)
+            changed = True
+    return changed
+
+
+def _remove_claude(root, global_scope):
+    removed = []
+    skipped = []
+    for relpath, text in iter_host_files("claude-code"):
+        if not relpath.startswith("commands/"):
+            continue
+        path = os.path.join(root, ".claude", relpath)
+        result = _remove_exact_file(path, text)
+        if result == "REMOVED":
+            removed.append(path)
+        elif result != "NOT_FOUND":
+            skipped.append(path)
+
+    settings_path = os.path.join(root, ".claude", "settings.json")
+    cfg = _read_json(settings_path)
+    if cfg is not None:
+        snippet = json.loads(read_snippet("claude-code", "settings"))
+        permissions = cfg.get("permissions", {})
+        changed = False
+        for category, entries in snippet["permissions"].items():
+            changed |= _remove_list_entries(permissions.get(category), entries)
+        if changed:
+            _write_json(settings_path, cfg)
+            removed.append(settings_path)
+    mcp_path = os.path.join(root, ".claude.json" if global_scope else ".mcp.json")
+    mcp_cfg = _read_json(mcp_path)
+    mcp = json.loads(read_snippet("claude-code", "mcp"))["mcpServers"]["context-guard"]
+    if mcp_cfg is not None and mcp_cfg.get("mcpServers", {}).get("context-guard") == mcp:
+        del mcp_cfg["mcpServers"]["context-guard"]
+        _write_json(mcp_path, mcp_cfg)
+        removed.append(mcp_path)
+    return removed, skipped
+
+
+def _remove_opencode(root, global_scope):
+    removed = []
+    skipped = []
+    commands_dir = (os.path.join(".config", "opencode", "commands")
+                    if global_scope else os.path.join(".opencode", "commands"))
+    for relpath, text in iter_host_files("opencode"):
+        if not relpath.startswith("commands/"):
+            continue
+        path = os.path.join(root, commands_dir, relpath.split("/", 1)[1])
+        result = _remove_exact_file(path, text)
+        if result == "REMOVED":
+            removed.append(path)
+        elif result != "NOT_FOUND":
+            skipped.append(path)
+
+    cfg_rel = (os.path.join(".config", "opencode", "opencode.json")
+               if global_scope else "opencode.json")
+    cfg_path = os.path.join(root, cfg_rel)
+    cfg = _read_json(cfg_path, jsonc=True)
+    if cfg is not None:
+        changed = False
+        agent = json.loads(read_snippet("opencode", "agent"))
+        if cfg.get("agent", {}).get("context-guard") == agent:
+            del cfg["agent"]["context-guard"]
+            changed = True
+        permissions = json.loads(read_snippet("opencode", "permissions"))["permission"]
+        for category, entries in permissions.items():
+            for pattern, mode in entries.items():
+                if cfg.get("permission", {}).get(category, {}).get(pattern) == mode:
+                    del cfg["permission"][category][pattern]
+                    changed = True
+        mcp = json.loads(read_snippet("opencode", "mcp"))["mcp"]["context-guard"]
+        if cfg.get("mcp", {}).get("context-guard") == mcp:
+            del cfg["mcp"]["context-guard"]
+            changed = True
+        if changed:
+            _write_json(cfg_path, cfg)
+            removed.append(cfg_path)
+    return removed, skipped
+
+
+def _remove_antigravity(root, global_scope):
+    removed = []
+    skipped = []
+    if not global_scope:
+        paths = [(os.path.join(root, ".agents", "rules", "context-guard.md"),
+                 _embedded_antigravity_file("rules/context-guard.md"))]
+    else:
+        skill = _embedded_antigravity_file("skills/context-guard/SKILL.md")
+        paths = [(os.path.join(root, *ANTIGRAVITY_SKILL_REL), skill),
+                 (os.path.join(root, ".gemini", "antigravity-cli", "skills",
+                               "context-guard", "SKILL.md"), skill)]
+    for path, expected in paths:
+        result = _remove_owned_file(path, expected)
+        if result == "REMOVED":
+            removed.append(path)
+        elif result != "NOT_FOUND":
+            skipped.append(path)
+
+    if not global_scope:
+        return removed, skipped
+    hooks_path = os.path.join(root, *ANTIGRAVITY_GLOBAL_ROOT, "hooks.json")
+    cfg = _read_json(hooks_path)
+    if cfg is not None:
+        snippet = json.loads(read_snippet("antigravity", "hooks"))["hooks"]["PreToolUse"][0]
+        hooks = cfg.get("hooks", {}).get("PreToolUse", [])
+        if isinstance(hooks, list):
+            remaining = [hook for hook in hooks if hook != snippet]
+            if len(remaining) != len(hooks):
+                cfg["hooks"]["PreToolUse"] = remaining
+                _write_json(hooks_path, cfg)
+                removed.append(hooks_path)
+    return removed, skipped
+
+
+def _remove_cursor(root, global_scope):
+    removed = []
+    skipped = []
+    rule_path = os.path.join(root, ".cursor", "rules", "context-guard.mdc")
+    expected = next((text for relpath, text in iter_host_files("cursor")
+                     if relpath == "rules/context-guard.mdc"), None)
+    result = _remove_owned_file(rule_path, expected)
+    if result == "REMOVED":
+        removed.append(rule_path)
+    elif result != "NOT_FOUND":
+        skipped.append(rule_path)
+
+    mcp_path = os.path.join(root, ".cursor", "mcp.json")
+    cfg = _read_json(mcp_path)
+    if cfg is not None:
+        snippet = json.loads(read_snippet("cursor", "mcp"))["mcpServers"]["context-guard"]
+        if cfg.get("mcpServers", {}).get("context-guard") == snippet:
+            del cfg["mcpServers"]["context-guard"]
+            _write_json(mcp_path, cfg)
+            removed.append(mcp_path)
+    return removed, skipped
+
+
 # ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------
@@ -468,8 +643,9 @@ def hosts_to_install(host, home):
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
-    """Install the adapters and return a CommandResult listing what changed."""
+def run_setup(host="all", with_mcp=False, project=None, no_hooks=False,
+              uninstall=False):
+    """Install or uninstall adapters and return a summary of the changes."""
     if host not in VALID_HOSTS:
         return CommandResult(
             f"FAIL|INVALID_HOST|{host}|expected one of {', '.join(VALID_HOSTS)}",
@@ -479,6 +655,33 @@ def run_setup(host="all", with_mcp=False, project=None, no_hooks=False):
     global_scope = project is None
     root = _home() if global_scope else os.path.abspath(project)
     selected = hosts_to_install(host, _home())
+
+    if uninstall:
+        lines = [f"Uninstalling context-guard adapters from {root} ..."]
+        removed = []
+        skipped = []
+        for name in selected:
+            if name == "claude":
+                host_removed, host_skipped = _remove_claude(root, global_scope)
+            elif name == "opencode":
+                host_removed, host_skipped = _remove_opencode(root, global_scope)
+            elif name == "antigravity":
+                host_removed, host_skipped = _remove_antigravity(root, global_scope)
+            else:
+                host_removed, host_skipped = _remove_cursor(root, global_scope)
+            removed += host_removed
+            skipped += host_skipped
+        lines.append("")
+        lines.append("Files removed:")
+        if removed:
+            lines.extend(f"  {path}" for path in removed)
+        else:
+            lines.append("  (none)")
+        if skipped:
+            lines.append("")
+            lines.append("Skipped (file changed or not owned by context-guard):")
+            lines.extend(f"  {path}" for path in skipped)
+        return CommandResult("\n".join(lines), EXIT_OK)
 
     lines = [f"Installing context-guard adapters into {root} ..."]
     touched = []

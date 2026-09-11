@@ -173,6 +173,8 @@ def parse_args(argv=None):
                               "cg approve itself; without it Antigravity has "
                               "no enforcement of the approval gate, only the "
                               "workspace rule asking it not to.")
+    p_setup.add_argument("--uninstall", action="store_true",
+                         help="Remove context-guard adapter files and entries")
 
     p_init = subparsers.add_parser("init")
     p_init.add_argument("--context", default=".")
@@ -241,7 +243,7 @@ def dispatch(args):
         ),
         "setup": lambda: cmd_setup(
             host=args.host, with_mcp=args.with_mcp, project=args.project,
-            no_hooks=args.no_hooks),
+            no_hooks=args.no_hooks, uninstall=args.uninstall),
         "list": lambda: cmd_list(args.context),
         "migrate": lambda: cmd_migrate(args.context),
         "begin": lambda: cmd_begin(args.context, args.phase, args.ttl, change),

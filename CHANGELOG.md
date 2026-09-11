@@ -204,8 +204,8 @@ plan that made them:
 
 - No `get.sh` curl-pipe bootstrap; installation is `pip install` plus
   `cg setup`.
-- No `cg setup --uninstall`. The exact list of files each run touches is
-  printed for that reason — it is the only record of what to remove by hand.
+- `cg setup --uninstall` removes owned adapter files and configuration entries;
+  files changed after installation are left in place and reported.
 - The tutorial exists in Spanish only; no English mirror yet.
 - `cg setup` and the three host adapters are still unverified against a real
   host session. `docs/adapters/VERIFY.md` is the manual checklist.
