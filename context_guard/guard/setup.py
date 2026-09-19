@@ -654,7 +654,7 @@ def run_setup(host="all", with_mcp=False, project=None, no_hooks=False,
 
     global_scope = project is None
     root = _home() if global_scope else os.path.abspath(project)
-    selected = hosts_to_install(host, _home())
+    selected = [host] if host != 'all' else list(HOST_DIRS) if uninstall else hosts_to_install(host, _home())
 
     if uninstall:
         lines = [f"Uninstalling context-guard adapters from {root} ..."]
